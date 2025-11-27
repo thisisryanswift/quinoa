@@ -738,40 +738,35 @@ These are expected to be missing (future work):
 
 ## 6. Testing
 
-### 6.1 Automated Tests ❌ MISSING
+### 6.1 Automated Tests ✅ COMPLETE
 
-**Status:** Test directories exist (`tests/rust/`, `tests/python/`) but are empty
+**Status:** Tests implemented
+- **Integration:** `tests/python/test_integration.py` verifies full recording lifecycle (mock backend)
+- **Unit:** Rust unit tests added to `granola_audio/src/lib.rs`
+- **Manual:** Scripts moved to `tests/manual/`
 
 **Guide Mentions:**
-- Line 1320: `cargo test` (Rust tests)
-- Line 1322: `pytest tests/python/` (Python tests)
+- Line 1320: `cargo test` (Rust tests) - **Working**
+- Line 1322: `pytest tests/python/` (Python tests) - **Working**
 
 **Impact:**
-- No regression testing
-- Difficult to verify PipeWire integration without manual testing
-- Risky refactoring
+- Regression testing now possible
+- CI pipeline can verify core functionality
 
 **Recommendation:**
-Priority test areas:
-1. Rust: Device enumeration mocking
-2. Rust: Audio encoder (WAV file validation)
-3. Python: Database operations
-4. Python: Stereo mixing logic
-5. Integration: End-to-end recording test with mock audio
+Continue expanding test coverage as new features are added.
 
 ---
 
-### 6.2 Test Scripts ✅ PRESENT
+### 6.2 Test Scripts ✅ ORGANIZED
 
 **Found:**
-- `test_audio.py`
-- `test_config.py`
-- `test_mixing.py`
-- `test_recording.py`
+- `tests/manual/test_audio.py`
+- `tests/manual/test_config.py`
+- `tests/manual/test_mixing.py`
+- `tests/manual/test_recording.py`
 
-**Status:** These appear to be manual test scripts, not automated tests
-
-**Recommendation:** Move these into `tests/python/` as proper pytest tests
+**Status:** Organized into `tests/manual/` to declutter root.
 
 ---
 
@@ -947,9 +942,9 @@ Some errors are user-friendly ("Please set your Gemini API Key"), others are tec
 
 ### Critical Issues (4)
 
-1. ❌ Missing event polling API for audio levels and errors
-2. ❌ No audio level (VU meter) support
-3. ❌ No error recovery/watchdog for PipeWire disconnects
+1. ✅ **Fixed:** Missing event polling API for audio levels and errors
+2. ✅ **Fixed:** No audio level (VU meter) support
+3. ✅ **Fixed:** No error recovery/watchdog for PipeWire disconnects
 4. ❌ Missing `get_default_microphone()` API
 
 ### Major Issues (8)
@@ -984,17 +979,17 @@ Some errors are user-friendly ("Please set your Gemini API Key"), others are tec
 
 ### P0 - Critical (Must Fix Before Release)
 
-1. **Implement event polling system** - Required for robust error handling and UX
-2. **Add audio level monitoring** - Essential user feedback during recording
-3. **Implement PipeWire disconnect recovery** - Prevents data loss
-4. **Add automated tests** - Critical for reliability
+1. ✅ **Done:** Implement event polling system
+2. ✅ **Done:** Add audio level monitoring
+3. ✅ **Done:** Implement PipeWire disconnect recovery
+4. ✅ **Done:** Add automated tests
 
 ### P1 - High Priority (Should Fix Soon)
 
-1. **Implement default device detection** - Major UX improvement
+1. **Implement default device detection** - Major UX improvement (Was P0/P1)
 2. **Add device hot-plug monitoring** - Handles common user scenario
 3. **Fix device enumeration to report real formats** - Accurate device info
-4. **Add VU meters to GUI** - Major UX improvement
+4. **Add VU meters to GUI** - ✅ **Done** (Implemented with audio levels)
 5. **Implement pause/resume** - Common user request
 6. **Complete database schema** - Enables future features
 

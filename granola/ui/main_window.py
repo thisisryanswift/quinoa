@@ -21,6 +21,7 @@ from PyQt6.QtWidgets import (
     QSystemTrayIcon,
     QMenu,
     QApplication,
+    QProgressBar,
 )
 from PyQt6.QtGui import QIcon, QAction
 from PyQt6.QtCore import QTimer, Qt, QThread, pyqtSignal
@@ -176,12 +177,49 @@ class MainWindow(QMainWindow):
         dev_layout.addWidget(QLabel("Microphone:"))
         self.mic_combo = QComboBox()
         dev_layout.addWidget(self.mic_combo)
+
+        # Mic Level Meter
+        self.mic_level_bar = QProgressBar()
+        self.mic_level_bar.setRange(0, 100)
+        self.mic_level_bar.setTextVisible(False)
+        self.mic_level_bar.setStyleSheet("""
+            QProgressBar {
+                border: 1px solid #bbb;
+                border-radius: 3px;
+                background-color: #eee;
+                height: 10px;
+            }
+            QProgressBar::chunk {
+                background-color: #2ecc71;
+            }
+        """)
+        dev_layout.addWidget(self.mic_level_bar)
+
         layout.addLayout(dev_layout)
 
         # System Audio Checkbox
+        sys_layout = QVBoxLayout()
         self.sys_audio_check = QCheckBox("Record System Audio")
         self.sys_audio_check.setChecked(True)
-        layout.addWidget(self.sys_audio_check)
+        sys_layout.addWidget(self.sys_audio_check)
+
+        # System Level Meter
+        self.sys_level_bar = QProgressBar()
+        self.sys_level_bar.setRange(0, 100)
+        self.sys_level_bar.setTextVisible(False)
+        self.sys_level_bar.setStyleSheet("""
+            QProgressBar {
+                border: 1px solid #bbb;
+                border-radius: 3px;
+                background-color: #eee;
+                height: 10px;
+            }
+            QProgressBar::chunk {
+                background-color: #3498db;
+            }
+        """)
+        sys_layout.addWidget(self.sys_level_bar)
+        layout.addLayout(sys_layout)
 
         # Status/Timer
         self.status_label = QLabel("Ready")
@@ -555,6 +593,10 @@ class MainWindow(QMainWindow):
             self.recording_session = None
             self.timer.stop()
 
+            # Reset meters
+            self.mic_level_bar.setValue(0)
+            self.sys_level_bar.setValue(0)
+
             self.record_btn.setText("Start Recording")
             self.record_btn.setStyleSheet("""
                 QPushButton {
@@ -587,6 +629,33 @@ class MainWindow(QMainWindow):
             mins = int(elapsed // 60)
             secs = int(elapsed % 60)
             self.status_label.setText(f"Recording: {mins:02d}:{secs:02d}")
+
+            # Poll events
+            try:
+                events = self.recording_session.poll_events()
+                for event in events:
+                    if event.type_ == "levels":
+                        if event.mic_level is not None:
+                            val = int(event.mic_level * 100)
+                            self.mic_level_bar.setValue(min(100, val))
+                        if event.system_level is not None:
+                            val = int(event.system_level * 100)
+                            self.sys_level_bar.setValue(min(100, val))
+                    elif event.type_ == "stopped":
+                        self.stop_recording()
+                    elif event.type_ == "error":
+                        print(f"Audio Error: {event.message}")
+                        self.status_label.setText(f"Error: {event.message}")
+                    elif event.type_ == "pipewire_disconnected":
+                        self.status_label.setText("⚠️ Connection lost - Reconnecting...")
+                        self.status_label.setStyleSheet(
+                            "font-size: 16px; color: orange;"
+                        )
+                    elif event.type_ == "started":
+                        self.status_label.setText("Recording...")
+                        self.status_label.setStyleSheet("font-size: 16px; color: #666;")
+            except Exception as e:
+                print(f"Error polling events: {e}")
 
     def start_transcription(self):
         if not config.get("api_key"):

@@ -4,7 +4,7 @@ use pyo3::prelude::*;
 mod device;
 mod capture;
 
-use capture::session::{start_recording_impl, RecordingConfig, RecordingSession};
+use capture::session::{start_recording_impl, RecordingConfig, RecordingSession, AudioEvent};
 
 #[derive(Clone, Debug, PartialEq)]
 #[pyclass(eq, eq_int)]
@@ -119,7 +119,34 @@ fn granola_audio(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<DeviceType>()?;
     m.add_class::<RecordingConfig>()?;
     m.add_class::<RecordingSession>()?;
+    m.add_class::<AudioEvent>()?;
     m.add_function(wrap_pyfunction!(list_devices, m)?)?;
     m.add_function(wrap_pyfunction!(start_recording, m)?)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_device_creation() {
+        let device = Device::new(
+            "test_id".to_string(),
+            "Test Device".to_string(),
+            DeviceType::Microphone,
+            true,
+            48000,
+            2,
+            false,
+        );
+
+        assert_eq!(device.id, "test_id");
+        assert_eq!(device.name, "Test Device");
+        assert_eq!(device.device_type, DeviceType::Microphone);
+        assert!(device.is_bluetooth);
+        assert_eq!(device.sample_rate, 48000);
+        assert_eq!(device.channels, 2);
+        assert!(!device.is_default);
+    }
 }
