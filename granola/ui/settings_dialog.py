@@ -6,7 +6,9 @@ from PyQt6.QtWidgets import (
     QPushButton,
     QFileDialog,
     QDialogButtonBox,
+    QMessageBox,
 )
+import os
 from granola.config import config
 
 
@@ -51,6 +53,34 @@ class SettingsDialog(QDialog):
             self.output_dir_edit.setText(path)
 
     def save_settings(self):
-        config.set("api_key", self.api_key_edit.text())
-        config.set("output_dir", self.output_dir_edit.text())
+        api_key = self.api_key_edit.text().strip()
+        output_dir = self.output_dir_edit.text().strip()
+
+        # Validation
+        if not api_key:
+            QMessageBox.warning(self, "Invalid Input", "API Key cannot be empty.")
+            return
+
+        if not output_dir:
+            QMessageBox.warning(
+                self, "Invalid Input", "Output directory cannot be empty."
+            )
+            return
+
+        # Check if output directory exists or can be created
+        try:
+            os.makedirs(output_dir, exist_ok=True)
+            # Check writability
+            test_file = os.path.join(output_dir, ".write_test")
+            with open(test_file, "w") as f:
+                f.write("test")
+            os.remove(test_file)
+        except Exception as e:
+            QMessageBox.warning(
+                self, "Invalid Input", f"Output directory is not writable:\n{e}"
+            )
+            return
+
+        config.set("api_key", api_key)
+        config.set("output_dir", output_dir)
         self.accept()

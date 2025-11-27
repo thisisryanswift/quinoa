@@ -33,6 +33,8 @@ pub struct AudioEvent {
 pub enum InternalAudioEvent {
     Started,
     Stopped,
+    Paused,
+    Resumed,
     Error(String),
     Levels { mic: f32, system: f32 },
     DeviceLost(String),
@@ -51,6 +53,20 @@ impl From<InternalAudioEvent> for AudioEvent {
             },
             InternalAudioEvent::Stopped => AudioEvent {
                 type_: "stopped".to_string(),
+                mic_level: None,
+                system_level: None,
+                message: None,
+                device_id: None,
+            },
+            InternalAudioEvent::Paused => AudioEvent {
+                type_: "paused".to_string(),
+                mic_level: None,
+                system_level: None,
+                message: None,
+                device_id: None,
+            },
+            InternalAudioEvent::Resumed => AudioEvent {
+                type_: "resumed".to_string(),
                 mic_level: None,
                 system_level: None,
                 message: None,
@@ -122,6 +138,8 @@ impl RecordingConfig {
 
 enum AudioCommand {
     Stop,
+    Pause,
+    Resume,
 }
 
 #[pyclass]
@@ -145,6 +163,22 @@ impl RecordingSession {
                     let _ = handle.join();
                 });
             });
+        }
+        Ok(())
+    }
+
+    fn pause(&self) -> PyResult<()> {
+        if let Some(tx) = &self.command_tx {
+            tx.send(AudioCommand::Pause)
+                .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to send pause command: {}", e)))?;
+        }
+        Ok(())
+    }
+
+    fn resume(&self) -> PyResult<()> {
+        if let Some(tx) = &self.command_tx {
+            tx.send(AudioCommand::Resume)
+                .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to send resume command: {}", e)))?;
         }
         Ok(())
     }
@@ -182,12 +216,37 @@ pub fn start_recording_impl(config: RecordingConfig) -> PyResult<RecordingSessio
             println!("Mock recording started for config: {:?}", config_clone);
             let _ = event_tx.send(InternalAudioEvent::Started);
             
-            // Simulate some levels
-            let _ = event_tx.send(InternalAudioEvent::Levels { mic: 0.5, system: 0.2 });
-            
-            let _ = command_rx.recv();
-            println!("Mock recording stopped");
-            let _ = event_tx.send(InternalAudioEvent::Stopped);
+            let mut is_paused = false;
+            loop {
+                // Simulate some levels (only when not paused)
+                if !is_paused {
+                    let _ = event_tx.send(InternalAudioEvent::Levels { mic: 0.5, system: 0.2 });
+                } else {
+                    let _ = event_tx.send(InternalAudioEvent::Levels { mic: 0.0, system: 0.0 });
+                }
+                
+                // Check for commands
+                match command_rx.recv_timeout(std::time::Duration::from_millis(100)) {
+                    Ok(AudioCommand::Stop) => {
+                        println!("Mock recording stopped");
+                        let _ = event_tx.send(InternalAudioEvent::Stopped);
+                        break;
+                    }
+                    Ok(AudioCommand::Pause) => {
+                        println!("Mock recording paused");
+                        is_paused = true;
+                        let _ = event_tx.send(InternalAudioEvent::Paused);
+                    }
+                    Ok(AudioCommand::Resume) => {
+                        println!("Mock recording resumed");
+                        is_paused = false;
+                        let _ = event_tx.send(InternalAudioEvent::Resumed);
+                    }
+                    Err(_) => {
+                        // Timeout, continue loop
+                    }
+                }
+            }
         }
     });
 
@@ -211,6 +270,7 @@ struct StreamUserData {
     output_path: PathBuf,
     levels: Arc<SharedLevels>,
     is_mic: bool,
+    is_paused: Arc<Mutex<bool>>,
 }
 
 #[cfg(feature = "real-audio")]
@@ -225,6 +285,7 @@ impl Default for StreamUserData {
                 system_level: Mutex::new(0.0),
             }),
             is_mic: false,
+            is_paused: Arc::new(Mutex::new(false)),
         }
     }
 }
@@ -238,6 +299,7 @@ fn create_stream(
     encoder: Arc<Mutex<Option<AudioEncoder>>>,
     levels: Arc<SharedLevels>,
     is_mic: bool,
+    is_paused: Arc<Mutex<bool>>,
 ) -> Result<(pw::stream::Stream, pw::stream::StreamListener<StreamUserData>), String> {
     use std::mem;
 
@@ -250,6 +312,7 @@ fn create_stream(
         output_path,
         levels,
         is_mic,
+        is_paused,
     };
 
     let listener = stream
@@ -331,9 +394,13 @@ fn create_stream(
                     }
                 }
 
-                if let Ok(guard) = user_data.encoder.lock() {
-                    if let Some(encoder) = guard.as_ref() {
-                        let _ = encoder.write(&float_samples);
+                // Only write to encoder if not paused
+                let is_paused = user_data.is_paused.lock().map(|p| *p).unwrap_or(false);
+                if !is_paused {
+                    if let Ok(guard) = user_data.encoder.lock() {
+                        if let Some(encoder) = guard.as_ref() {
+                            let _ = encoder.write(&float_samples);
+                        }
                     }
                 }
             }
@@ -420,6 +487,9 @@ fn connect_and_run(
         system_level: Mutex::new(0.0),
     });
 
+    // Shared pause state
+    let is_paused = Arc::new(Mutex::new(false));
+
     // Notify started (or reconnected)
     let _ = event_tx.send(InternalAudioEvent::Started);
 
@@ -435,7 +505,7 @@ fn connect_and_run(
             "target.object" => mic_id.as_str(),
         };
         let path = output_dir.join("microphone.wav");
-        Some(create_stream(&core, "granola-mic", props, path, mic_encoder, levels.clone(), true)
+        Some(create_stream(&core, "granola-mic", props, path, mic_encoder, levels.clone(), true, is_paused.clone())
             .map_err(|e| SessionError::Recoverable(format!("Failed to create mic stream: {}", e)))?)
     } else {
         None
@@ -453,7 +523,7 @@ fn connect_and_run(
             *pw::keys::STREAM_CAPTURE_SINK => "true",
         };
         let path = output_dir.join("system.wav");
-        Some(create_stream(&core, "granola-sys", props, path, sys_encoder, levels.clone(), false)
+        Some(create_stream(&core, "granola-sys", props, path, sys_encoder, levels.clone(), false, is_paused.clone())
             .map_err(|e| SessionError::Recoverable(format!("Failed to create system stream: {}", e)))?)
     } else {
         None
@@ -464,6 +534,7 @@ fn connect_and_run(
     let event_tx_clone = event_tx.clone();
     let levels_clone = levels.clone();
     let command_rx_clone = command_rx.clone();
+    let is_paused_clone = is_paused.clone();
     
     // We need to know if we quit because of a stop command or an error
     let stop_requested = Arc::new(Mutex::new(false));
@@ -479,6 +550,18 @@ fn connect_and_run(
                             *stop = true;
                         }
                         loop_clone.quit();
+                    }
+                    AudioCommand::Pause => {
+                        if let Ok(mut paused) = is_paused_clone.lock() {
+                            *paused = true;
+                        }
+                        let _ = event_tx_clone.send(InternalAudioEvent::Paused);
+                    }
+                    AudioCommand::Resume => {
+                        if let Ok(mut paused) = is_paused_clone.lock() {
+                            *paused = false;
+                        }
+                        let _ = event_tx_clone.send(InternalAudioEvent::Resumed);
                     }
                 }
             }

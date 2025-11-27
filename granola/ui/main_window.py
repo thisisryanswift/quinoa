@@ -22,8 +22,9 @@ from PyQt6.QtWidgets import (
     QMenu,
     QApplication,
     QProgressBar,
+    QInputDialog,
 )
-from PyQt6.QtGui import QIcon, QAction
+from PyQt6.QtGui import QIcon, QAction, QKeySequence, QShortcut
 from PyQt6.QtCore import QTimer, Qt, QThread, pyqtSignal
 import granola_audio
 from granola.transcription.processor import create_stereo_mix
@@ -78,9 +79,13 @@ class MainWindow(QMainWindow):
         self.db = Database()
         self.recording_session = None
         self.recording_start_time = 0
+        self.recording_paused_time = 0  # Track time spent paused
+        self.pause_start_time = 0  # When pause started
+        self.is_paused = False
         self.current_session_dir = None
         self.current_rec_id = None
         self.selected_history_rec_id = None
+        self.device_monitor = None
 
         # Main layout with Tabs
         tabs = QTabWidget()
@@ -103,8 +108,30 @@ class MainWindow(QMainWindow):
         # Initialize devices
         self.refresh_devices()
 
+        # Setup Shortcuts
+        self.setup_shortcuts()
+
+        # Start device monitoring
+        try:
+            self.device_monitor = granola_audio.subscribe_device_changes()
+        except Exception as e:
+            print(f"Failed to start device monitor: {e}")
+
         # Setup Tray Icon
         self.setup_tray_icon()
+
+    def setup_shortcuts(self):
+        # Start/Stop Recording (Ctrl+R)
+        self.record_shortcut = QShortcut(QKeySequence("Ctrl+R"), self)
+        self.record_shortcut.activated.connect(self.toggle_recording)
+
+        # Pause/Resume (Space)
+        self.pause_shortcut = QShortcut(QKeySequence("Space"), self)
+        self.pause_shortcut.activated.connect(self.toggle_pause)
+
+        # Quit (Ctrl+Q)
+        self.quit_shortcut = QShortcut(QKeySequence("Ctrl+Q"), self)
+        self.quit_shortcut.activated.connect(self.close)
 
     def setup_tray_icon(self):
         if not QSystemTrayIcon.isSystemTrayAvailable():
@@ -159,6 +186,12 @@ class MainWindow(QMainWindow):
                 2000,
             )
         else:
+            # Stop device monitor
+            if self.device_monitor:
+                try:
+                    self.device_monitor.stop()
+                except Exception as e:
+                    print(f"Error stopping device monitor: {e}")
             event.accept()
 
     def setup_record_tab(self, parent):
@@ -227,7 +260,9 @@ class MainWindow(QMainWindow):
         self.status_label.setStyleSheet("font-size: 16px; color: #666;")
         layout.addWidget(self.status_label)
 
-        # Record Button
+        # Record and Pause Buttons
+        button_layout = QHBoxLayout()
+
         self.record_btn = QPushButton("Start Recording")
         self.record_btn.setMinimumHeight(50)
         self.record_btn.setStyleSheet("""
@@ -242,7 +277,29 @@ class MainWindow(QMainWindow):
             }
         """)
         self.record_btn.clicked.connect(self.toggle_recording)
-        layout.addWidget(self.record_btn)
+        button_layout.addWidget(self.record_btn)
+
+        self.pause_btn = QPushButton("Pause")
+        self.pause_btn.setMinimumHeight(50)
+        self.pause_btn.setEnabled(False)
+        self.pause_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #f39c12;
+                color: white;
+                font-size: 18px;
+                border-radius: 5px;
+            }
+            QPushButton:hover {
+                background-color: #e67e22;
+            }
+            QPushButton:disabled {
+                background-color: #bdc3c7;
+            }
+        """)
+        self.pause_btn.clicked.connect(self.toggle_pause)
+        button_layout.addWidget(self.pause_btn)
+
+        layout.addLayout(button_layout)
 
         # Transcribe Button
         self.transcribe_btn = QPushButton("Transcribe Last Recording")
@@ -275,6 +332,10 @@ class MainWindow(QMainWindow):
         list_layout = QVBoxLayout(list_container)
         list_layout.addWidget(QLabel("Past Recordings:"))
         self.history_list = QListWidget()
+        self.history_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.history_list.customContextMenuRequested.connect(
+            self.show_history_context_menu
+        )
         self.history_list.itemClicked.connect(self.load_history_item)
         list_layout.addWidget(self.history_list)
         splitter.addWidget(list_container)
@@ -311,6 +372,38 @@ class MainWindow(QMainWindow):
         splitter.setSizes([300, 500])
 
         self.refresh_history()
+
+    def show_history_context_menu(self, position):
+        item = self.history_list.itemAt(position)
+        if not item:
+            return
+
+        menu = QMenu()
+        rename_action = QAction("Rename", self)
+        rename_action.triggered.connect(lambda: self.rename_recording(item))
+        menu.addAction(rename_action)
+
+        menu.exec(self.history_list.viewport().mapToGlobal(position))
+
+    def rename_recording(self, item):
+        rec_id = item.data(Qt.ItemDataRole.UserRole)
+        current_text = item.text().split("\n")[
+            0
+        ]  # Extract title from "Title (Duration)\nDate"
+        # Remove duration if present
+        if "(" in current_text:
+            current_text = current_text.rsplit(" (", 1)[0]
+
+        new_title, ok = QInputDialog.getText(
+            self, "Rename Recording", "New Title:", text=current_text
+        )
+
+        if ok and new_title:
+            try:
+                self.db.update_recording_title(rec_id, new_title)
+                self.refresh_history()
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Failed to rename recording: {e}")
 
     def refresh_history(self):
         self.history_list.clear()
@@ -459,16 +552,21 @@ class MainWindow(QMainWindow):
     def refresh_devices(self):
         self.mic_combo.clear()
         try:
-            devices = granola_audio.list_devices()
-            for device in devices:
+            self.devices = granola_audio.list_devices()
+            default_index = 0
+
+            for device in self.devices:
                 if device.device_type == granola_audio.DeviceType.Microphone:
                     self.mic_combo.addItem(f"{device.name}", device.id)
+                    if device.is_default:
+                        default_index = self.mic_combo.count() - 1
 
-            if self.mic_combo.count() == 0:
+            if self.mic_combo.count() > 0:
+                self.mic_combo.setCurrentIndex(default_index)
+                self.record_btn.setEnabled(True)
+            else:
                 self.mic_combo.addItem("No microphones found", None)
                 self.record_btn.setEnabled(False)
-            else:
-                self.record_btn.setEnabled(True)
 
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to list devices: {str(e)}")
@@ -507,11 +605,44 @@ class MainWindow(QMainWindow):
         else:
             self.start_recording()
 
+    def toggle_pause(self):
+        if not self.recording_session:
+            return
+
+        try:
+            if self.is_paused:
+                self.recording_session.resume()
+                # Don't update UI here - wait for the event
+            else:
+                self.recording_session.pause()
+                # Don't update UI here - wait for the event
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to toggle pause: {str(e)}")
+
     def start_recording(self):
         mic_id = self.mic_combo.currentData()
         if not mic_id:
             QMessageBox.warning(self, "Warning", "Please select a microphone.")
             return
+
+        # Check for Bluetooth A2DP profile
+        if hasattr(self, "devices"):
+            for device in self.devices:
+                if device.id == mic_id and device.is_bluetooth:
+                    profile = getattr(device, "bluetooth_profile", None)
+                    if profile and "a2dp" in profile.lower():
+                        reply = QMessageBox.warning(
+                            self,
+                            "Bluetooth Warning",
+                            f"The device '{device.name}' appears to be in A2DP (Music) mode.\n"
+                            "Microphone input may not work or may be silent.\n\n"
+                            "Do you want to continue anyway?",
+                            QMessageBox.StandardButton.Yes
+                            | QMessageBox.StandardButton.No,
+                            QMessageBox.StandardButton.No,
+                        )
+                        if reply == QMessageBox.StandardButton.No:
+                            return
 
         # Check disk space
         if not self.check_disk_space():
@@ -539,14 +670,20 @@ class MainWindow(QMainWindow):
 
             self.recording_session = granola_audio.start_recording(config_obj)
             self.recording_start_time = time.time()
+            self.recording_paused_time = 0
+            self.is_paused = False
 
             # Add to DB
+            mic_name = self.mic_combo.currentText()
             self.db.add_recording(
                 self.current_rec_id,
                 f"Recording {timestamp}",
                 datetime.now(),
                 os.path.join(self.current_session_dir, "microphone.wav"),
                 os.path.join(self.current_session_dir, "system.wav"),
+                mic_device_id=mic_id,
+                mic_device_name=mic_name,
+                directory_path=self.current_session_dir,
             )
             self.refresh_history()
 
@@ -565,6 +702,7 @@ class MainWindow(QMainWindow):
             self.mic_combo.setEnabled(False)
             self.sys_audio_check.setEnabled(False)
             self.transcribe_btn.setEnabled(False)
+            self.pause_btn.setEnabled(True)
             self.status_label.setText("Recording...")
 
             # Update Tray
@@ -586,8 +724,15 @@ class MainWindow(QMainWindow):
                 print(f"Error stopping session: {e}")
 
             # Update DB
-            duration = time.time() - self.recording_start_time
-            self.db.update_recording_status(self.current_rec_id, "completed", duration)
+            duration = (
+                time.time() - self.recording_start_time - self.recording_paused_time
+            )
+            self.db.update_recording_status(
+                self.current_rec_id,
+                "completed",
+                duration=duration,
+                ended_at=datetime.now(),
+            )
             self.refresh_history()
 
             self.recording_session = None
@@ -612,6 +757,9 @@ class MainWindow(QMainWindow):
             self.mic_combo.setEnabled(True)
             self.sys_audio_check.setEnabled(True)
             self.transcribe_btn.setEnabled(True)
+            self.pause_btn.setEnabled(False)
+            self.pause_btn.setText("Pause")
+            self.is_paused = False
             if self.current_session_dir:
                 self.status_label.setText("Saved to " + self.current_session_dir)
             else:
@@ -623,12 +771,53 @@ class MainWindow(QMainWindow):
                 self.style().standardIcon(self.style().StandardPixmap.SP_MediaPlay)
             )
 
+    def handle_audio_error(self, error_msg):
+        friendly_msg = error_msg
+        title = "Audio Error"
+
+        if "PipeWire" in error_msg:
+            if "connection" in error_msg.lower() or "connect" in error_msg.lower():
+                friendly_msg = (
+                    "Lost connection to the audio server (PipeWire).\n"
+                    "Please check your audio settings or restart the application."
+                )
+            else:
+                friendly_msg = f"Audio server error: {error_msg}"
+        elif "device" in error_msg.lower() and "not found" in error_msg.lower():
+            friendly_msg = (
+                "The selected microphone could not be found.\n"
+                "It may have been unplugged."
+            )
+
+        print(f"Audio Error: {error_msg}")
+        self.status_label.setText("Error occurred")
+        QMessageBox.critical(self, title, friendly_msg)
+
     def update_timer(self):
         if self.recording_session:
-            elapsed = time.time() - self.recording_start_time
+            # Calculate elapsed time (excluding paused time)
+            if self.is_paused:
+                # Currently paused - don't update elapsed time
+                elapsed = self.recording_start_time + self.recording_paused_time
+                current_pause_duration = time.time() - self.pause_start_time
+                elapsed = (
+                    time.time()
+                    - self.recording_start_time
+                    - self.recording_paused_time
+                    - current_pause_duration
+                )
+            else:
+                elapsed = (
+                    time.time() - self.recording_start_time - self.recording_paused_time
+                )
+
             mins = int(elapsed // 60)
             secs = int(elapsed % 60)
-            self.status_label.setText(f"Recording: {mins:02d}:{secs:02d}")
+
+            if self.is_paused:
+                self.status_label.setText(f"⏸ Paused: {mins:02d}:{secs:02d}")
+            else:
+                self.status_label.setText(f"Recording: {mins:02d}:{secs:02d}")
 
             # Poll events
             try:
@@ -641,11 +830,24 @@ class MainWindow(QMainWindow):
                         if event.system_level is not None:
                             val = int(event.system_level * 100)
                             self.sys_level_bar.setValue(min(100, val))
+                    elif event.type_ == "paused":
+                        self.is_paused = True
+                        self.pause_start_time = time.time()
+                        self.pause_btn.setText("Resume")
+                        self.status_label.setStyleSheet(
+                            "font-size: 16px; color: orange;"
+                        )
+                    elif event.type_ == "resumed":
+                        self.is_paused = False
+                        self.recording_paused_time += (
+                            time.time() - self.pause_start_time
+                        )
+                        self.pause_btn.setText("Pause")
+                        self.status_label.setStyleSheet("font-size: 16px; color: #666;")
                     elif event.type_ == "stopped":
                         self.stop_recording()
                     elif event.type_ == "error":
-                        print(f"Audio Error: {event.message}")
-                        self.status_label.setText(f"Error: {event.message}")
+                        self.handle_audio_error(event.message)
                     elif event.type_ == "pipewire_disconnected":
                         self.status_label.setText("⚠️ Connection lost - Reconnecting...")
                         self.status_label.setStyleSheet(
@@ -656,6 +858,20 @@ class MainWindow(QMainWindow):
                         self.status_label.setStyleSheet("font-size: 16px; color: #666;")
             except Exception as e:
                 print(f"Error polling events: {e}")
+
+        # Poll device monitor for hot-plug events
+        if self.device_monitor:
+            try:
+                device_events = self.device_monitor.poll()
+                for event in device_events:
+                    if event.type_ in ["added", "removed"]:
+                        print(
+                            f"Device {event.type_}: {event.device_name} ({event.device_id})"
+                        )
+                        self.refresh_devices()
+                        break  # Only refresh once per timer tick
+            except Exception as e:
+                print(f"Error polling device events: {e}")
 
     def start_transcription(self):
         if not config.get("api_key"):

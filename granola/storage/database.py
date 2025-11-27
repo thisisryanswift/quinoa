@@ -17,18 +17,37 @@ class Database:
 
     def _init_db(self):
         with sqlite3.connect(self.db_path) as conn:
+            # Create table with full schema
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS recordings (
                     id TEXT PRIMARY KEY,
                     title TEXT,
                     started_at TIMESTAMP,
+                    ended_at TIMESTAMP,
                     duration_seconds REAL,
                     mic_path TEXT,
                     sys_path TEXT,
                     stereo_path TEXT,
-                    status TEXT
+                    status TEXT,
+                    mic_device_id TEXT,
+                    mic_device_name TEXT,
+                    directory_path TEXT
                 )
             """)
+
+            # Check for missing columns (migration for existing DBs)
+            cursor = conn.execute("PRAGMA table_info(recordings)")
+            columns = [row[1] for row in cursor.fetchall()]
+
+            if "ended_at" not in columns:
+                conn.execute("ALTER TABLE recordings ADD COLUMN ended_at TIMESTAMP")
+            if "mic_device_id" not in columns:
+                conn.execute("ALTER TABLE recordings ADD COLUMN mic_device_id TEXT")
+            if "mic_device_name" not in columns:
+                conn.execute("ALTER TABLE recordings ADD COLUMN mic_device_name TEXT")
+            if "directory_path" not in columns:
+                conn.execute("ALTER TABLE recordings ADD COLUMN directory_path TEXT")
+
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS transcripts (
                     recording_id TEXT PRIMARY KEY,
@@ -49,14 +68,36 @@ class Database:
                 )
             """)
 
-    def add_recording(self, rec_id, title, started_at, mic_path, sys_path):
+    def add_recording(
+        self,
+        rec_id,
+        title,
+        started_at,
+        mic_path,
+        sys_path,
+        mic_device_id=None,
+        mic_device_name=None,
+        directory_path=None,
+    ):
         with sqlite3.connect(self.db_path) as conn:
             conn.execute(
-                "INSERT INTO recordings (id, title, started_at, mic_path, sys_path, status) VALUES (?, ?, ?, ?, ?, ?)",
-                (rec_id, title, started_at, str(mic_path), str(sys_path), "recording"),
+                "INSERT INTO recordings (id, title, started_at, mic_path, sys_path, status, mic_device_id, mic_device_name, directory_path) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    rec_id,
+                    title,
+                    started_at,
+                    str(mic_path),
+                    str(sys_path),
+                    "recording",
+                    mic_device_id,
+                    mic_device_name,
+                    str(directory_path) if directory_path else None,
+                ),
             )
 
-    def update_recording_status(self, rec_id, status, duration=None, stereo_path=None):
+    def update_recording_status(
+        self, rec_id, status, duration=None, stereo_path=None, ended_at=None
+    ):
         with sqlite3.connect(self.db_path) as conn:
             updates = ["status = ?"]
             params = [status]
@@ -64,6 +105,10 @@ class Database:
             if duration is not None:
                 updates.append("duration_seconds = ?")
                 params.append(duration)
+
+            if ended_at is not None:
+                updates.append("ended_at = ?")
+                params.append(ended_at)
 
             if stereo_path is not None:
                 updates.append("stereo_path = ?")
@@ -73,6 +118,13 @@ class Database:
 
             query = f"UPDATE recordings SET {', '.join(updates)} WHERE id = ?"
             conn.execute(query, params)
+
+    def update_recording_title(self, rec_id, title):
+        with sqlite3.connect(self.db_path) as conn:
+            conn.execute(
+                "UPDATE recordings SET title = ? WHERE id = ?",
+                (title, rec_id),
+            )
 
     def save_transcript(self, rec_id, text, summary=None):
         with sqlite3.connect(self.db_path) as conn:
