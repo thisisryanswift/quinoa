@@ -11,6 +11,7 @@ dependencies = [
     "PyQt6>=6.6.0",
     "google-genai>=0.3.0",
     "keyring>=24.0.0",
+    "pydantic>=2.0.0",
 ]
 
 [tool.maturin]

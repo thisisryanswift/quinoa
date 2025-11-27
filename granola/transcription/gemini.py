@@ -1,6 +1,19 @@
 import os
+from typing import List, Optional
+from pydantic import BaseModel
 from google import genai
 from google.genai import types
+
+
+class ActionItem(BaseModel):
+    text: str
+    assignee: Optional[str] = None
+
+
+class TranscriptionResponse(BaseModel):
+    transcript: str
+    summary: str
+    action_items: List[ActionItem]
 
 
 class GeminiTranscriber:
@@ -25,15 +38,6 @@ class GeminiTranscriber:
             prompt = """
             You are a meeting assistant. Transcribe the audio and extract action items.
             The audio is stereo: Left=Me, Right=Others.
-            
-            Return a JSON object with this structure:
-            {
-              "transcript": "Full transcript text with speaker labels (Me, Speaker 1, etc.) and timestamps.",
-              "summary": "A brief summary of the meeting.",
-              "action_items": [
-                {"text": "Action item description", "assignee": "Name or null"}
-              ]
-            }
             """
 
         print("Generating transcript...")
@@ -49,7 +53,10 @@ class GeminiTranscriber:
                     ]
                 )
             ],
-            config=types.GenerateContentConfig(response_mime_type="application/json"),
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=TranscriptionResponse,
+            ),
         )
 
         return response.text
