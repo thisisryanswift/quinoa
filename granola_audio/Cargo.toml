@@ -1,0 +1,20 @@
+[package]
+name = "granola_audio"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "granola_audio"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.23", features = ["extension-module"] }
+pipewire = { version = "0.8", optional = true }
+hound = "3.5"
+thiserror = "1.0"
+tokio = { version = "1", features = ["rt", "sync"] }
+
+[features]
+default = ["mock"]
+real-audio = ["dep:pipewire"]
+mock = []
