@@ -8,6 +8,27 @@ use pipewire::context::Context;
 use std::sync::{Arc, Mutex};
 #[cfg(feature = "real-audio")]
 use crate::{Device, DeviceType};
+#[cfg(feature = "real-audio")]
+use serde::Deserialize;
+
+/// Helper struct for parsing PipeWire default device JSON
+#[cfg(feature = "real-audio")]
+#[derive(Deserialize)]
+struct DefaultDevice {
+    name: String,
+}
+
+/// Parse a PipeWire default device value, which may be JSON or a plain string
+#[cfg(feature = "real-audio")]
+fn parse_default_device(json_val: &str) -> Option<String> {
+    if json_val.starts_with('{') {
+        serde_json::from_str::<DefaultDevice>(json_val)
+            .ok()
+            .map(|d| d.name)
+    } else {
+        Some(json_val.to_string())
+    }
+}
 
 #[cfg(feature = "real-audio")]
 pub fn list_devices_pw() -> Result<Vec<Device>, String> {
@@ -50,46 +71,17 @@ pub fn list_devices_pw() -> Result<Vec<Device>, String> {
                                 if subject == 0 { // Global settings
                                     if key == Some("default.audio.source") {
                                         if let Some(json_val) = value {
-                                            // Value is often a JSON string like "{\"name\": \"...\"}" or just the name string
-                                            let name = if json_val.starts_with('{') {
-                                                if let Some(start) = json_val.find("\"name\":") {
-                                                    let rest = &json_val[start + 7..];
-                                                    if let Some(start_quote) = rest.find('"') {
-                                                        let rest = &rest[start_quote + 1..];
-                                                        if let Some(end_quote) = rest.find('"') {
-                                                            Some(rest[0..end_quote].to_string())
-                                                        } else { None }
-                                                    } else { None }
-                                                } else { None }
-                                            } else {
-                                                Some(json_val.to_string())
-                                            };
-                                            
-                                            if let Some(n) = name {
+                                            if let Some(name) = parse_default_device(json_val) {
                                                 if let Ok(mut guard) = default_source_clone.lock() {
-                                                    *guard = Some(n);
+                                                    *guard = Some(name);
                                                 }
                                             }
                                         }
                                     } else if key == Some("default.audio.sink") {
                                         if let Some(json_val) = value {
-                                            let name = if json_val.starts_with('{') {
-                                                if let Some(start) = json_val.find("\"name\":") {
-                                                    let rest = &json_val[start + 7..];
-                                                    if let Some(start_quote) = rest.find('"') {
-                                                        let rest = &rest[start_quote + 1..];
-                                                        if let Some(end_quote) = rest.find('"') {
-                                                            Some(rest[0..end_quote].to_string())
-                                                        } else { None }
-                                                    } else { None }
-                                                } else { None }
-                                            } else {
-                                                Some(json_val.to_string())
-                                            };
-                                            
-                                            if let Some(n) = name {
+                                            if let Some(name) = parse_default_device(json_val) {
                                                 if let Ok(mut guard) = default_sink_clone.lock() {
-                                                    *guard = Some(n);
+                                                    *guard = Some(name);
                                                 }
                                             }
                                         }

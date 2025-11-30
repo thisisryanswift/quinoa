@@ -1,5 +1,6 @@
 import os
 import wave
+
 from granola.transcription.processor import create_stereo_mix
 
 

@@ -1,14 +1,16 @@
+import os
+
 from PyQt6.QtWidgets import (
     QDialog,
-    QVBoxLayout,
+    QDialogButtonBox,
+    QFileDialog,
     QFormLayout,
     QLineEdit,
-    QPushButton,
-    QFileDialog,
-    QDialogButtonBox,
     QMessageBox,
+    QPushButton,
+    QVBoxLayout,
 )
-import os
+
 from granola.config import config
 
 
@@ -38,8 +40,7 @@ class SettingsDialog(QDialog):
 
         # Buttons
         buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Save
-            | QDialogButtonBox.StandardButton.Cancel
+            QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel
         )
         buttons.accepted.connect(self.save_settings)
         buttons.rejected.connect(self.reject)
@@ -62,9 +63,7 @@ class SettingsDialog(QDialog):
             return
 
         if not output_dir:
-            QMessageBox.warning(
-                self, "Invalid Input", "Output directory cannot be empty."
-            )
+            QMessageBox.warning(self, "Invalid Input", "Output directory cannot be empty.")
             return
 
         # Check if output directory exists or can be created
@@ -76,9 +75,7 @@ class SettingsDialog(QDialog):
                 f.write("test")
             os.remove(test_file)
         except Exception as e:
-            QMessageBox.warning(
-                self, "Invalid Input", f"Output directory is not writable:\n{e}"
-            )
+            QMessageBox.warning(self, "Invalid Input", f"Output directory is not writable:\n{e}")
             return
 
         config.set("api_key", api_key)

@@ -1,7 +1,9 @@
-import pytest
 import os
 import shutil
 import time
+
+import pytest
+
 import granola_audio
 
 

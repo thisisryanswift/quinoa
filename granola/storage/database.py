@@ -1,11 +1,12 @@
-import sqlite3
 import os
+import sqlite3
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 
 class Database:
-    def __init__(self, db_path=None):
+    def __init__(self, db_path: str | Path | None = None) -> None:
         if not db_path:
             # Default to ~/.local/share/granola/granola.db
             data_dir = os.path.expanduser("~/.local/share/granola")
@@ -15,7 +16,7 @@ class Database:
         self.db_path = db_path
         self._init_db()
 
-    def _init_db(self):
+    def _init_db(self) -> None:
         with sqlite3.connect(self.db_path) as conn:
             # Create table with full schema
             conn.execute("""
@@ -70,15 +71,15 @@ class Database:
 
     def add_recording(
         self,
-        rec_id,
-        title,
-        started_at,
-        mic_path,
-        sys_path,
-        mic_device_id=None,
-        mic_device_name=None,
-        directory_path=None,
-    ):
+        rec_id: str,
+        title: str,
+        started_at: datetime,
+        mic_path: str | Path,
+        sys_path: str | Path,
+        mic_device_id: str | None = None,
+        mic_device_name: str | None = None,
+        directory_path: str | Path | None = None,
+    ) -> None:
         with sqlite3.connect(self.db_path) as conn:
             conn.execute(
                 "INSERT INTO recordings (id, title, started_at, mic_path, sys_path, status, mic_device_id, mic_device_name, directory_path) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -96,11 +97,16 @@ class Database:
             )
 
     def update_recording_status(
-        self, rec_id, status, duration=None, stereo_path=None, ended_at=None
-    ):
+        self,
+        rec_id: str,
+        status: str,
+        duration: float | None = None,
+        stereo_path: str | Path | None = None,
+        ended_at: datetime | None = None,
+    ) -> None:
         with sqlite3.connect(self.db_path) as conn:
             updates = ["status = ?"]
-            params = [status]
+            params: list[Any] = [status]
 
             if duration is not None:
                 updates.append("duration_seconds = ?")
@@ -119,43 +125,41 @@ class Database:
             query = f"UPDATE recordings SET {', '.join(updates)} WHERE id = ?"
             conn.execute(query, params)
 
-    def update_recording_title(self, rec_id, title):
+    def update_recording_title(self, rec_id: str, title: str) -> None:
         with sqlite3.connect(self.db_path) as conn:
             conn.execute(
                 "UPDATE recordings SET title = ? WHERE id = ?",
                 (title, rec_id),
             )
 
-    def save_transcript(self, rec_id, text, summary=None):
+    def save_transcript(self, rec_id: str, text: str, summary: str | None = None) -> None:
         with sqlite3.connect(self.db_path) as conn:
             conn.execute(
                 "INSERT OR REPLACE INTO transcripts (recording_id, text, summary, created_at) VALUES (?, ?, ?, ?)",
                 (rec_id, text, summary, datetime.now()),
             )
 
-    def get_recordings(self):
+    def get_recordings(self) -> list[dict[str, Any]]:
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute("SELECT * FROM recordings ORDER BY started_at DESC")
             return [dict(row) for row in cursor.fetchall()]
 
-    def get_recording(self, rec_id):
+    def get_recording(self, rec_id: str) -> dict[str, Any] | None:
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute("SELECT * FROM recordings WHERE id = ?", (rec_id,))
             row = cursor.fetchone()
             return dict(row) if row else None
 
-    def get_transcript(self, rec_id):
+    def get_transcript(self, rec_id: str) -> dict[str, Any] | None:
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
-            cursor = conn.execute(
-                "SELECT * FROM transcripts WHERE recording_id = ?", (rec_id,)
-            )
+            cursor = conn.execute("SELECT * FROM transcripts WHERE recording_id = ?", (rec_id,))
             row = cursor.fetchone()
             return dict(row) if row else None
 
-    def save_action_items(self, rec_id, items):
+    def save_action_items(self, rec_id: str, items: list[dict[str, Any]]) -> None:
         with sqlite3.connect(self.db_path) as conn:
             conn.execute("DELETE FROM action_items WHERE recording_id = ?", (rec_id,))
             for item in items:
@@ -164,10 +168,8 @@ class Database:
                     (rec_id, item.get("text"), item.get("assignee")),
                 )
 
-    def get_action_items(self, rec_id):
+    def get_action_items(self, rec_id: str) -> list[dict[str, Any]]:
         with sqlite3.connect(self.db_path) as conn:
             conn.row_factory = sqlite3.Row
-            cursor = conn.execute(
-                "SELECT * FROM action_items WHERE recording_id = ?", (rec_id,)
-            )
+            cursor = conn.execute("SELECT * FROM action_items WHERE recording_id = ?", (rec_id,))
             return [dict(row) for row in cursor.fetchall()]

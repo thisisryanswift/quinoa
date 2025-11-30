@@ -14,7 +14,49 @@ dependencies = [
     "pydantic>=2.0.0",
 ]
 
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.8.0",
+    "mypy>=1.13.0",
+    "pytest>=8.0.0",
+]
+
 [tool.maturin]
 features = ["pyo3/extension-module", "real-audio"]
 module-name = "granola_audio"
 manifest-path = "granola_audio/Cargo.toml"
+
+# Ruff - fast Python linter and formatter
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # pyflakes
+    "I",      # isort (import sorting)
+    "B",      # flake8-bugbear (common bugs, bare except)
+    "T20",    # flake8-print (no print statements)
+    "UP",     # pyupgrade (modern Python syntax)
+    "SIM",    # flake8-simplify
+]
+ignore = [
+    "E501",   # line too long (let formatter handle it)
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["T20"]  # Allow print in tests
+
+[tool.ruff.format]
+quote-style = "double"
+
+# Mypy - static type checking
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_ignores = true
+# Start lenient, tighten over time
+ignore_missing_imports = true
+check_untyped_defs = false

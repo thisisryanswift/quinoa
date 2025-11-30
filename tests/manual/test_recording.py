@@ -1,7 +1,8 @@
-import granola_audio
-import time
 import os
 import shutil
+import time
+
+import granola_audio
 
 print("Granola Recording Test")
 print("----------------------")

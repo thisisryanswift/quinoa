@@ -1,8 +1,13 @@
-import wave
 import os
+import wave
+from pathlib import Path
+
+from granola.constants import AUDIO_CHUNK_SIZE
 
 
-def create_stereo_mix(mic_path, sys_path, output_path):
+def create_stereo_mix(
+    mic_path: str | Path, sys_path: str | Path, output_path: str | Path
+) -> str:
     """
     Merges two WAV files into a single stereo WAV file.
     Left channel: Microphone (mixed down to mono if stereo)
@@ -11,7 +16,7 @@ def create_stereo_mix(mic_path, sys_path, output_path):
     if not os.path.exists(mic_path) or not os.path.exists(sys_path):
         raise FileNotFoundError("Input audio files not found")
 
-    with wave.open(mic_path, "rb") as mic_wav, wave.open(sys_path, "rb") as sys_wav:
+    with wave.open(str(mic_path), "rb") as mic_wav, wave.open(str(sys_path), "rb") as sys_wav:
         # Validate compatibility
         if mic_wav.getframerate() != sys_wav.getframerate():
             raise ValueError(
@@ -31,24 +36,22 @@ def create_stereo_mix(mic_path, sys_path, output_path):
         sys_frames_total = sys_wav.getnframes()
         max_frames = max(mic_frames_total, sys_frames_total)
 
-        with wave.open(output_path, "wb") as out_wav:
+        with wave.open(str(output_path), "wb") as out_wav:
             out_wav.setnchannels(2)
             out_wav.setsampwidth(sampwidth)
             out_wav.setframerate(framerate)
             out_wav.setnframes(max_frames)
 
-            chunk_size = 4096
-
-            for _ in range(0, max_frames, chunk_size):
-                mic_data = mic_wav.readframes(chunk_size)
-                sys_data = sys_wav.readframes(chunk_size)
+            for _ in range(0, max_frames, AUDIO_CHUNK_SIZE):
+                mic_data = mic_wav.readframes(AUDIO_CHUNK_SIZE)
+                sys_data = sys_wav.readframes(AUDIO_CHUNK_SIZE)
 
                 # Pad with silence if needed
-                mic_expected_len = chunk_size * sampwidth * mic_channels
+                mic_expected_len = AUDIO_CHUNK_SIZE * sampwidth * mic_channels
                 if len(mic_data) < mic_expected_len:
                     mic_data += b"\x00" * (mic_expected_len - len(mic_data))
 
-                sys_expected_len = chunk_size * sampwidth * sys_channels
+                sys_expected_len = AUDIO_CHUNK_SIZE * sampwidth * sys_channels
                 if len(sys_data) < sys_expected_len:
                     sys_data += b"\x00" * (sys_expected_len - len(sys_data))
 
@@ -73,4 +76,4 @@ def create_stereo_mix(mic_path, sys_path, output_path):
 
                 out_wav.writeframes(stereo_data)
 
-    return output_path
+    return str(output_path)

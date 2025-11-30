@@ -1,5 +1,6 @@
-from granola.config import config
 import keyring
+
+from granola.config import config
 
 
 def test_config_keyring():

@@ -1,6 +1,7 @@
-import granola_audio
-import time
 import os
+import time
+
+import granola_audio
 
 print("Granola Audio Test")
 print("==================")

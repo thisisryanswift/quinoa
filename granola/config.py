@@ -1,8 +1,14 @@
+import contextlib
 import json
+import logging
 import os
 from pathlib import Path
+from typing import Any
+
 import keyring
 import keyring.errors
+
+logger = logging.getLogger("granola")
 
 CONFIG_DIR = Path(os.path.expanduser("~/.config/granola"))
 CONFIG_FILE = CONFIG_DIR / "config.json"
@@ -17,23 +23,23 @@ DEFAULT_CONFIG = {
 
 
 class Config:
-    def __init__(self):
+    def __init__(self) -> None:
         self._data = DEFAULT_CONFIG.copy()
         self.load()
 
-    def load(self):
+    def load(self) -> None:
         if CONFIG_FILE.exists():
             try:
-                with open(CONFIG_FILE, "r") as f:
+                with open(CONFIG_FILE) as f:
                     saved = json.load(f)
                     # Filter out api_key if it was accidentally saved in json before
                     if "api_key" in saved:
                         del saved["api_key"]
                     self._data.update(saved)
             except Exception as e:
-                print(f"Failed to load config: {e}")
+                logger.warning("Failed to load config: %s", e)
 
-    def save(self):
+    def save(self) -> None:
         CONFIG_DIR.mkdir(parents=True, exist_ok=True)
         try:
             with open(CONFIG_FILE, "w") as f:
@@ -41,29 +47,27 @@ class Config:
                 data_to_save = {k: v for k, v in self._data.items() if k != "api_key"}
                 json.dump(data_to_save, f, indent=4)
         except Exception as e:
-            print(f"Failed to save config: {e}")
+            logger.warning("Failed to save config: %s", e)
 
-    def get(self, key, default=None):
+    def get(self, key: str, default: Any | None = None) -> Any:
         if key == "api_key":
             try:
                 return keyring.get_password(SERVICE_NAME, API_KEY_USER) or default
             except Exception as e:
-                print(f"Keyring error: {e}")
+                logger.warning("Keyring error: %s", e)
                 return default
         return self._data.get(key, default)
 
-    def set(self, key, value):
+    def set(self, key: str, value: Any) -> None:
         if key == "api_key":
             try:
                 if value:
                     keyring.set_password(SERVICE_NAME, API_KEY_USER, value)
                 else:
-                    try:
+                    with contextlib.suppress(keyring.errors.PasswordDeleteError):
                         keyring.delete_password(SERVICE_NAME, API_KEY_USER)
-                    except keyring.errors.PasswordDeleteError:
-                        pass
             except Exception as e:
-                print(f"Failed to save to keyring: {e}")
+                logger.warning("Failed to save to keyring: %s", e)
         else:
             self._data[key] = value
             self.save()

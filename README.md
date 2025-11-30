@@ -1,13 +1,76 @@
 # Granola Linux
 
-A meeting recording and transcription app for Linux, built with Rust (audio capture) and Python (GUI/Transcription).
+A meeting recording and transcription app for Linux. Records microphone and system audio separately, then uses Google Gemini for transcription with speaker diarization.
 
 ## Features
 
-- **Dual-Channel Recording**: Captures microphone and system audio (meeting participants) separately.
-- **Transcription**: Uses Google Gemini 2.0 Flash for fast, accurate transcription with speaker diarization.
-- **History**: Local database of past recordings and transcripts.
-- **Non-Invasive**: Works alongside Google Meet, Zoom, etc. without interfering.
+- **Dual-Channel Recording**: Captures your microphone and system audio (meeting participants) as separate tracks
+- **Non-Invasive**: Uses PipeWire monitor ports - works alongside Google Meet, Zoom, etc. without interference
+- **AI Transcription**: Google Gemini 2.0 Flash with speaker diarization, summaries, and action items
+- **Bluetooth Support**: Works with Bluetooth headsets in HFP/HSP mode
+- **Device Hot-Plug**: Automatically detects when audio devices are connected/disconnected
+- **Pause/Resume**: Pause recording during breaks without creating multiple files
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Python Application                        │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────────┐   │
+│  │  PyQt6 GUI   │  │   Gemini     │  │  SQLite Storage  │   │
+│  └──────┬───────┘  │ Transcription│  └──────────────────┘   │
+│         │          └──────────────┘                          │
+│         ▼                                                    │
+│  ┌───────────────────────────────────────────────────────┐  │
+│  │            granola_audio (Rust + PyO3)                │  │
+│  │         PipeWire capture, device management           │  │
+│  └───────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+                ┌───────────────────────┐
+                │       PipeWire        │
+                └───────────────────────┘
+```
+
+**Why Rust for audio?** PipeWire requires a dedicated event loop and low-latency buffer handling. Rust provides safety and performance, exposed to Python via PyO3.
+
+**Why separate tracks?** Recording mic (left) and system audio (right) separately helps Gemini distinguish between you and remote participants.
+
+## Project Structure
+
+```
+granola-linux/
+├── granola/                    # Python application
+│   ├── main.py                 # Entry point
+│   ├── config.py               # Configuration (keyring for API key)
+│   ├── constants.py            # Application constants
+│   ├── logging.py              # Logging configuration
+│   ├── storage/database.py     # SQLite operations
+│   ├── transcription/
+│   │   ├── gemini.py           # Gemini API client
+│   │   └── processor.py        # Audio mixing for transcription
+│   └── ui/
+│       ├── main_window.py      # Main GUI
+│       ├── settings_dialog.py  # Settings
+│       ├── styles.py           # UI stylesheets
+│       ├── transcribe_worker.py # Background transcription
+│       └── transcript_handler.py # Transcript parsing utilities
+│
+├── granola_audio/              # Rust audio library
+│   └── src/
+│       ├── lib.rs              # PyO3 bindings
+│       ├── capture/
+│       │   ├── session.rs      # Recording session management
+│       │   └── encoder.rs      # WAV encoding
+│       └── device/
+│           ├── enumerate.rs    # Device discovery
+│           └── monitor.rs      # Hot-plug monitoring
+│
+└── tests/
+    ├── python/                 # Integration tests
+    └── manual/                 # Manual test scripts
+```
 
 ## Development Setup
 
@@ -15,50 +78,129 @@ A meeting recording and transcription app for Linux, built with Rust (audio capt
 
 - Rust (latest stable)
 - Python 3.12+
-- PipeWire development headers (`libpipewire-0.3-dev` on Debian/Ubuntu, `pipewire-devel` on Fedora)
+- [uv](https://docs.astral.sh/uv/) (Python package manager)
+- PipeWire development headers
+
+```bash
+# Fedora
+sudo dnf install pipewire-devel
+
+# Ubuntu/Debian
+sudo apt install libpipewire-0.3-dev
+```
 
 ### Building
 
-1. Create a virtual environment:
-   ```bash
-   python3 -m venv .venv
-   source .venv/bin/activate
-   ```
+```bash
+# Create virtual environment and install dependencies
+uv venv
+source .venv/bin/activate
+uv pip install maturin PyQt6 google-genai keyring pydantic
 
-2. Install dependencies:
-   ```bash
-   pip install maturin PyQt6 google-genai
-   ```
+# Install dev dependencies (optional)
+uv pip install -e ".[dev]"  # Includes ruff, mypy, pytest
 
-3. Build the Rust extension:
-   ```bash
-   cd granola_audio
-   maturin develop --features real-audio
-   cd ..
-   ```
+# Build Rust extension with PipeWire support
+cd granola_audio
+maturin develop --features real-audio
+cd ..
+```
 
 ### Running
 
-1. Set your Gemini API key:
-   ```bash
-   export GEMINI_API_KEY="your_api_key_here"
-   ```
+```bash
+# Option 1: Set API key via environment (temporary)
+export GEMINI_API_KEY="your_key"
+python -m granola.main
 
-2. Run the application:
-   ```bash
-   python -m granola.main
-   ```
+# Option 2: Set via Settings dialog (stored in system keyring)
+python -m granola.main
+# Then go to Settings and enter your API key
+```
+
+### Testing
+
+```bash
+# Run with mock audio backend (no PipeWire needed)
+cd granola_audio
+maturin develop  # Without --features real-audio
+cd ..
+python -m granola.main --test
+
+# Run integration tests
+pytest tests/python/
+
+# Lint and type check
+ruff check granola/ tests/
+mypy granola/
+```
 
 ## Usage
 
-1. **Select Microphone**: Choose your input device from the dropdown.
-2. **Record System Audio**: Keep checked to capture remote participants.
-3. **Start Recording**: Click the button.
-4. **Stop Recording**: Click again when done.
-5. **Transcribe**: Click "Transcribe Last Recording" to generate a transcript.
-6. **History**: Switch to the "History" tab to view past recordings and transcripts.
+1. **Select Microphone** from the dropdown (auto-detects default)
+2. **Check "Record System Audio"** to capture meeting participants
+3. **Click "Start Recording"** - watch the VU meters for audio levels
+4. **Pause/Resume** as needed during breaks
+5. **Click "Stop Recording"** when done
+6. **Click "Transcribe"** to send to Gemini
+7. **View History** tab for past recordings and transcripts
 
-## Data Location
+### Keyboard Shortcuts
 
-- **Recordings**: `~/Music/Granola/`
-- **Database**: `~/.local/share/granola/granola.db`
+| Shortcut | Action |
+|----------|--------|
+| `Ctrl+R` | Start/Stop Recording |
+| `Space`  | Pause/Resume |
+| `Ctrl+Q` | Quit |
+
+## Data Storage
+
+| Data | Location |
+|------|----------|
+| Recordings | `~/Music/Granola/{session_id}/` |
+| Database | `~/.local/share/granola/granola.db` |
+| Config | `~/.config/granola/config.json` |
+| API Key | System keyring (secure) |
+
+Each recording session creates:
+```
+~/Music/Granola/rec_20241115_143022/
+├── microphone.wav      # Your voice
+├── system.wav          # Meeting participants
+└── mixed_stereo.wav    # Combined (for transcription)
+```
+
+## Troubleshooting
+
+### No audio devices found
+```bash
+# Check PipeWire is running
+systemctl --user status pipewire
+
+# List PipeWire nodes
+pw-cli list-objects | grep -E "Audio/(Source|Sink)"
+```
+
+### Bluetooth headset shows no mic
+Bluetooth headsets in A2DP (music) mode don't expose a microphone. Start a call or manually switch to HFP/HSP mode:
+```bash
+# Check current profile
+pactl list cards | grep -A 20 "bluez"
+
+# Switch to headset mode (enables mic)
+pactl set-card-profile bluez_card.XX_XX_XX_XX_XX_XX headset-head-unit
+```
+
+### Recording is silent
+- Check VU meters during recording - they should move when you speak
+- Verify correct microphone is selected
+- Check system audio is playing through expected output device
+
+### Transcription fails
+- Verify API key is set (Settings dialog or `GEMINI_API_KEY` env var)
+- Check network connectivity
+- Ensure audio files exist in the recording directory
+
+## License
+
+MIT

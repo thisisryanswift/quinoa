@@ -1,33 +1,34 @@
+import logging
 import os
-from typing import List, Optional
-from pydantic import BaseModel
+
 from google import genai
 from google.genai import types
+from pydantic import BaseModel
+
+logger = logging.getLogger("granola")
 
 
 class ActionItem(BaseModel):
     text: str
-    assignee: Optional[str] = None
+    assignee: str | None = None
 
 
 class TranscriptionResponse(BaseModel):
     transcript: str
     summary: str
-    action_items: List[ActionItem]
+    action_items: list[ActionItem]
 
 
 class GeminiTranscriber:
-    def __init__(self, api_key=None):
+    def __init__(self, api_key: str | None = None) -> None:
         self.api_key = api_key or os.environ.get("GEMINI_API_KEY")
         if not self.api_key:
-            raise ValueError(
-                "GEMINI_API_KEY not found. Please set it in environment variables."
-            )
+            raise ValueError("GEMINI_API_KEY not found. Please set it in environment variables.")
         self.client = genai.Client(api_key=self.api_key)
 
-    def transcribe(self, audio_path, prompt=None):
+    def transcribe(self, audio_path: str, prompt: str | None = None) -> str:
         # Upload file
-        print(f"Uploading {audio_path}...")
+        logger.info("Uploading %s...", audio_path)
         audio_file = self.client.files.upload(file=audio_path)
 
         if not audio_file.uri:
@@ -40,7 +41,7 @@ class GeminiTranscriber:
             The audio is stereo: Left=Me, Right=Others.
             """
 
-        print("Generating transcript...")
+        logger.info("Generating transcript...")
         response = self.client.models.generate_content(
             model="gemini-2.0-flash",
             contents=[
@@ -59,4 +60,4 @@ class GeminiTranscriber:
             ),
         )
 
-        return response.text
+        return str(response.text)
