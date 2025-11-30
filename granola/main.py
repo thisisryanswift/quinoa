@@ -32,7 +32,7 @@ def main():
 
 def start_test(window, app):
     logger.info("Test: Starting recording...")
-    if window.record_tab.record_btn.isEnabled():
+    if window.middle_panel.record_btn.isEnabled():
         window.toggle_recording()
         # Stop after 3 seconds
         QTimer.singleShot(3000, lambda: stop_test(window, app))

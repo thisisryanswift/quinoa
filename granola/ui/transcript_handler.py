@@ -9,18 +9,36 @@ logger = logging.getLogger("granola")
 def parse_transcription_result(json_str: str) -> dict:
     """Parse transcription JSON result.
 
-    Returns dict with keys: transcript, summary, action_items, parse_error
+    Returns dict with keys: utterances, summary, action_items, transcript (plain text), parse_error
     """
     try:
         data = json.loads(json_str)
+
+        # Get utterances (new format)
+        utterances = data.get("utterances", [])
+
+        # Build plain text transcript from utterances for backwards compatibility
+        if utterances:
+            transcript_lines = []
+            for u in utterances:
+                speaker = u.get("speaker", "Unknown")
+                text = u.get("text", "")
+                transcript_lines.append(f"{speaker}: {text}")
+            transcript = "\n\n".join(transcript_lines)
+        else:
+            # Fallback to old format
+            transcript = data.get("transcript", "")
+
         return {
-            "transcript": data.get("transcript", ""),
+            "utterances": utterances,
+            "transcript": transcript,
             "summary": data.get("summary", ""),
             "action_items": data.get("action_items", []),
             "parse_error": False,
         }
     except json.JSONDecodeError:
         return {
+            "utterances": [],
             "transcript": json_str,
             "summary": "",
             "action_items": [],
@@ -29,10 +47,36 @@ def parse_transcription_result(json_str: str) -> dict:
 
 
 def format_transcript_display(transcript: str, summary: str) -> str:
-    """Format transcript and summary for display."""
+    """Format transcript and summary for display (plain text fallback)."""
     if summary:
         return f"## Summary\n{summary}\n\n## Transcript\n{transcript}"
     return transcript
+
+
+def utterances_to_json(utterances: list[dict]) -> str:
+    """Convert utterances list to JSON string for storage."""
+    return json.dumps(utterances)
+
+
+def utterances_from_json(json_str: str | None) -> list[dict]:
+    """Parse utterances JSON from storage."""
+    if not json_str:
+        return []
+    try:
+        return json.loads(json_str)
+    except json.JSONDecodeError:
+        return []
+
+
+def apply_speaker_names(utterances: list[dict], speaker_names: dict[str, str]) -> list[dict]:
+    """Apply speaker name mappings to utterances."""
+    result = []
+    for u in utterances:
+        new_u = u.copy()
+        original_speaker = u.get("speaker", "Unknown")
+        new_u["display_speaker"] = speaker_names.get(original_speaker, original_speaker)
+        result.append(new_u)
+    return result
 
 
 def format_action_item(action: dict) -> str:

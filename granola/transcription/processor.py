@@ -5,9 +5,7 @@ from pathlib import Path
 from granola.constants import AUDIO_CHUNK_SIZE
 
 
-def create_stereo_mix(
-    mic_path: str | Path, sys_path: str | Path, output_path: str | Path
-) -> str:
+def create_stereo_mix(mic_path: str | Path, sys_path: str | Path, output_path: str | Path) -> str:
     """
     Merges two WAV files into a single stereo WAV file.
     Left channel: Microphone (mixed down to mono if stereo)

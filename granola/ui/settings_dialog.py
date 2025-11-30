@@ -1,10 +1,13 @@
 import os
 
 from PyQt6.QtWidgets import (
+    QCheckBox,
     QDialog,
     QDialogButtonBox,
     QFileDialog,
     QFormLayout,
+    QGroupBox,
+    QLabel,
     QLineEdit,
     QMessageBox,
     QPushButton,
@@ -37,6 +40,25 @@ class SettingsDialog(QDialog):
         form.addRow("", self.output_dir_btn)
 
         layout.addLayout(form)
+
+        # File Search settings group
+        file_search_group = QGroupBox("AI Assistant")
+        file_search_layout = QVBoxLayout(file_search_group)
+
+        self.file_search_checkbox = QCheckBox("Enable AI search across meetings")
+        self.file_search_checkbox.setChecked(config.get("file_search_enabled", False))
+        file_search_layout.addWidget(self.file_search_checkbox)
+
+        file_search_info = QLabel(
+            "When enabled, your meeting transcripts and notes are synced to\n"
+            "Gemini File Search for AI-powered search. This allows you to ask\n"
+            "questions about your past meetings in the AI Assistant panel.\n\n"
+            "Note: Requires app restart to take effect."
+        )
+        file_search_info.setStyleSheet("color: #888; font-size: 11px;")
+        file_search_layout.addWidget(file_search_info)
+
+        layout.addWidget(file_search_group)
 
         # Buttons
         buttons = QDialogButtonBox(
@@ -80,4 +102,5 @@ class SettingsDialog(QDialog):
 
         config.set("api_key", api_key)
         config.set("output_dir", output_dir)
+        config.set("file_search_enabled", self.file_search_checkbox.isChecked())
         self.accept()

@@ -25,9 +25,7 @@ class TrayIconManager:
         self.tray_icon = QSystemTrayIcon(self.parent)
 
         # Use a standard icon
-        icon = self.parent.style().standardIcon(
-            self.parent.style().StandardPixmap.SP_MediaPlay
-        )
+        icon = self.parent.style().standardIcon(self.parent.style().StandardPixmap.SP_MediaPlay)
         if icon.isNull():
             logger.warning("Standard icon SP_MediaPlay not found")
 
@@ -45,7 +43,7 @@ class TrayIconManager:
         menu.addAction(self.record_action)
 
         quit_action = QAction("Quit", self.parent)
-        quit_action.triggered.connect(QApplication.instance().quit)
+        quit_action.triggered.connect(self._quit_application)
         menu.addAction(quit_action)
 
         self.tray_icon.setContextMenu(menu)
@@ -63,6 +61,11 @@ class TrayIconManager:
                 self.parent.show()
                 self.parent.activateWindow()
 
+    def _quit_application(self):
+        """Quit the application (not minimize to tray)."""
+        self.parent._quitting = True
+        QApplication.instance().quit()
+
     def set_recording_state(self, is_recording: bool):
         """Update tray icon to reflect recording state."""
         if not self.tray_icon:
@@ -71,16 +74,12 @@ class TrayIconManager:
         if is_recording:
             self.record_action.setText("Stop Recording")
             self.tray_icon.setIcon(
-                self.parent.style().standardIcon(
-                    self.parent.style().StandardPixmap.SP_MediaStop
-                )
+                self.parent.style().standardIcon(self.parent.style().StandardPixmap.SP_MediaStop)
             )
         else:
             self.record_action.setText("Start Recording")
             self.tray_icon.setIcon(
-                self.parent.style().standardIcon(
-                    self.parent.style().StandardPixmap.SP_MediaPlay
-                )
+                self.parent.style().standardIcon(self.parent.style().StandardPixmap.SP_MediaPlay)
             )
 
     def is_visible(self) -> bool:

@@ -129,9 +129,7 @@ class HistoryTab:
                 self.db.update_recording_title(rec_id, new_title)
                 self.refresh()
             except Exception as e:
-                QMessageBox.critical(
-                    self.history_list, "Error", f"Failed to rename recording: {e}"
-                )
+                QMessageBox.critical(self.history_list, "Error", f"Failed to rename recording: {e}")
 
     def refresh(self):
         """Refresh the history list from database."""
@@ -207,9 +205,7 @@ class HistoryTab:
         # Get recording details to find path
         rec = self.db.get_recording(self.selected_rec_id)
         if not rec:
-            QMessageBox.warning(
-                self.transcribe_btn, "Error", "Recording not found in database."
-            )
+            QMessageBox.warning(self.transcribe_btn, "Error", "Recording not found in database.")
             return
 
         # Derive session directory from mic_path
@@ -251,9 +247,7 @@ class HistoryTab:
 
         # Save to DB
         if self.selected_rec_id:
-            self.db.save_transcript(
-                self.selected_rec_id, result["transcript"], result["summary"]
-            )
+            self.db.save_transcript(self.selected_rec_id, result["transcript"], result["summary"])
             if not result["parse_error"]:
                 self.db.save_action_items(self.selected_rec_id, result["action_items"])
 

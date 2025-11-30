@@ -13,10 +13,33 @@ class ActionItem(BaseModel):
     assignee: str | None = None
 
 
+class Utterance(BaseModel):
+    """A single speaker utterance in the transcript."""
+
+    speaker: str  # "Me", "Speaker 2", or detected name
+    text: str
+
+
 class TranscriptionResponse(BaseModel):
-    transcript: str
+    utterances: list[Utterance]  # Speaker-attributed transcript
     summary: str
     action_items: list[ActionItem]
+
+
+# Default transcription prompt with speaker diarization
+DEFAULT_TRANSCRIPTION_PROMPT = """
+You are a meeting transcription assistant. Transcribe the audio with speaker attribution.
+
+Instructions:
+1. Identify different speakers in the audio
+2. If the audio is stereo, the left channel is "Me" and right channel is other participants
+3. For other speakers, use names if mentioned in conversation, otherwise use "Speaker 2", "Speaker 3", etc.
+4. Break the transcript into utterances - each time a different person speaks, start a new utterance
+5. Provide a concise summary of the meeting (2-3 sentences)
+6. Extract any action items mentioned
+
+Keep utterances reasonably sized - split long monologues into paragraphs.
+"""
 
 
 class GeminiTranscriber:
@@ -36,10 +59,7 @@ class GeminiTranscriber:
 
         # Default prompt
         if not prompt:
-            prompt = """
-            You are a meeting assistant. Transcribe the audio and extract action items.
-            The audio is stereo: Left=Me, Right=Others.
-            """
+            prompt = DEFAULT_TRANSCRIPTION_PROMPT
 
         logger.info("Generating transcript...")
         response = self.client.models.generate_content(

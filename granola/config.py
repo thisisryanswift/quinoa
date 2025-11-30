@@ -14,11 +14,19 @@ CONFIG_DIR = Path(os.path.expanduser("~/.config/granola"))
 CONFIG_FILE = CONFIG_DIR / "config.json"
 SERVICE_NAME = "granola-linux"
 API_KEY_USER = "gemini_api_key"
+FILE_SEARCH_STORE_USER = "file_search_store_name"
 
 DEFAULT_CONFIG = {
     "output_dir": os.path.expanduser("~/Music/Granola"),
     "system_audio_enabled": True,
     "mic_device_id": None,
+    # Window state persistence
+    "splitter_sizes": None,  # Will use SPLITTER_DEFAULT_SIZES if None
+    "left_panel_collapsed": False,
+    "right_panel_collapsed": False,
+    # File Search settings
+    "file_search_enabled": False,  # User opt-in
+    "file_search_delay_minutes": 5,  # Delay before sync
 }
 
 
@@ -50,15 +58,23 @@ class Config:
             logger.warning("Failed to save config: %s", e)
 
     def get(self, key: str, default: Any | None = None) -> Any:
+        # Keys stored in keyring for security
         if key == "api_key":
             try:
                 return keyring.get_password(SERVICE_NAME, API_KEY_USER) or default
             except Exception as e:
                 logger.warning("Keyring error: %s", e)
                 return default
+        if key == "file_search_store_name":
+            try:
+                return keyring.get_password(SERVICE_NAME, FILE_SEARCH_STORE_USER) or default
+            except Exception as e:
+                logger.warning("Keyring error: %s", e)
+                return default
         return self._data.get(key, default)
 
     def set(self, key: str, value: Any) -> None:
+        # Keys stored in keyring for security
         if key == "api_key":
             try:
                 if value:
@@ -66,6 +82,15 @@ class Config:
                 else:
                     with contextlib.suppress(keyring.errors.PasswordDeleteError):
                         keyring.delete_password(SERVICE_NAME, API_KEY_USER)
+            except Exception as e:
+                logger.warning("Failed to save to keyring: %s", e)
+        elif key == "file_search_store_name":
+            try:
+                if value:
+                    keyring.set_password(SERVICE_NAME, FILE_SEARCH_STORE_USER, value)
+                else:
+                    with contextlib.suppress(keyring.errors.PasswordDeleteError):
+                        keyring.delete_password(SERVICE_NAME, FILE_SEARCH_STORE_USER)
             except Exception as e:
                 logger.warning("Failed to save to keyring: %s", e)
         else:
