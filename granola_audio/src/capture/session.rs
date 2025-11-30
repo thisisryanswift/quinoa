@@ -376,7 +376,7 @@ fn create_stream(
                         let start = n * mem::size_of::<f32>();
                         let end = start + mem::size_of::<f32>();
                         let bytes = &samples[start..end];
-                        f32::from_le_bytes(bytes.try_into().unwrap())
+                        f32::from_le_bytes(bytes.try_into().expect("sample slice should be 4 bytes"))
                     })
                     .collect();
 
@@ -424,7 +424,7 @@ fn create_stream(
     .0
     .into_inner();
 
-    let mut params = [Pod::from_bytes(&values).unwrap()];
+    let mut params = [Pod::from_bytes(&values).expect("serialized pod bytes should be valid")];
 
     // Connect stream
     stream

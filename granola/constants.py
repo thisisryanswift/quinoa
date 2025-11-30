@@ -1,5 +1,11 @@
 """Constants for Granola application."""
 
+from enum import IntEnum
+
+# Gemini Models
+GEMINI_MODEL_TRANSCRIPTION = "gemini-2.0-flash"
+GEMINI_MODEL_SEARCH = "gemini-2.5-flash"
+
 # Window dimensions
 WINDOW_MIN_WIDTH = 1000
 WINDOW_MIN_HEIGHT = 600
@@ -30,3 +36,19 @@ FILE_SEARCH_DELAY_MS = 5 * 60 * 1000  # 5 minutes before sync
 FILE_SEARCH_POLL_INTERVAL_MS = 60 * 1000  # Check every minute
 MIN_SYNC_DURATION_SECONDS = 30  # Skip recordings shorter than 30s
 CHAT_MAX_HISTORY = 50  # Max messages to retrieve
+
+
+class PanelMode(IntEnum):
+    """Mode for the middle panel."""
+
+    IDLE = 0
+    RECORDING = 1
+    VIEWING = 2
+
+
+class ViewType(IntEnum):
+    """View type when in viewing mode."""
+
+    NOTES = 0
+    TRANSCRIPT = 1
+    ENHANCED = 2

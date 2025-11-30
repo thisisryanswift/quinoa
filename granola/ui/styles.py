@@ -196,3 +196,15 @@ DATE_GROUP_HEADER_STYLE = """
     padding: 8px 4px 4px 4px;
     text-transform: uppercase;
 """
+
+# Speaker colors for transcript bubbles
+SPEAKER_COLORS = [
+    "#3498db",  # Blue (Me)
+    "#9b59b6",  # Purple
+    "#e67e22",  # Orange
+    "#1abc9c",  # Teal
+    "#e74c3c",  # Red
+    "#2ecc71",  # Green
+    "#f39c12",  # Yellow
+    "#34495e",  # Dark gray
+]

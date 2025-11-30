@@ -1,5 +1,6 @@
 """Background worker for AI-enhanced notes generation."""
 
+import json
 import logging
 
 from google import genai
@@ -8,6 +9,7 @@ from pydantic import BaseModel
 from PyQt6.QtCore import QThread, pyqtSignal
 
 from granola.config import config
+from granola.constants import GEMINI_MODEL_TRANSCRIPTION
 
 logger = logging.getLogger("granola")
 
@@ -52,16 +54,13 @@ class EnhanceWorker(QThread):
 
             logger.info("Generating enhanced notes...")
             response = client.models.generate_content(
-                model="gemini-2.0-flash",
+                model=GEMINI_MODEL_TRANSCRIPTION,
                 contents=[types.Content(parts=[types.Part.from_text(text=prompt)])],
                 config=types.GenerateContentConfig(
                     response_mime_type="application/json",
                     response_schema=EnhancedNotesResponse,
                 ),
             )
-
-            # Parse the response
-            import json
 
             result = json.loads(response.text)
             enhanced = result.get("enhanced_notes", "")

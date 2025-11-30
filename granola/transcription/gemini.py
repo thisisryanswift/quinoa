@@ -5,6 +5,8 @@ from google import genai
 from google.genai import types
 from pydantic import BaseModel
 
+from granola.constants import GEMINI_MODEL_TRANSCRIPTION
+
 logger = logging.getLogger("granola")
 
 
@@ -63,7 +65,7 @@ class GeminiTranscriber:
 
         logger.info("Generating transcript...")
         response = self.client.models.generate_content(
-            model="gemini-2.0-flash",
+            model=GEMINI_MODEL_TRANSCRIPTION,
             contents=[
                 types.Content(
                     parts=[

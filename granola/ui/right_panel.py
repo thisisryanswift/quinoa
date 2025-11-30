@@ -113,6 +113,27 @@ class RightPanel(QWidget):
         self._enabled = False
         self._setup_ui()
 
+    def _create_placeholder(self) -> QLabel:
+        """Create the placeholder label for empty chat."""
+        placeholder = QLabel(
+            "Ask questions about your meetings.\n\n"
+            "Examples:\n"
+            "• What action items came from last week?\n"
+            "• What did we discuss about the API?\n"
+            "• Summarize my meeting with Sarah"
+        )
+        placeholder.setWordWrap(True)
+        placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        placeholder.setStyleSheet("color: #666; margin-top: 30px;")
+        return placeholder
+
+    def _clear_chat_widgets(self) -> None:
+        """Remove all widgets from the chat layout."""
+        while self.chat_layout.count() > 0:
+            item = self.chat_layout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+
     def _setup_ui(self) -> None:
         """Setup the panel UI."""
         layout = QVBoxLayout(self)
@@ -148,17 +169,7 @@ class RightPanel(QWidget):
         self.chat_layout.setSpacing(8)
         self.chat_layout.setContentsMargins(10, 10, 10, 10)
 
-        # Placeholder message
-        self.placeholder = QLabel(
-            "Ask questions about your meetings.\n\n"
-            "Examples:\n"
-            "• What action items came from last week?\n"
-            "• What did we discuss about the API?\n"
-            "• Summarize my meeting with Sarah"
-        )
-        self.placeholder.setWordWrap(True)
-        self.placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.placeholder.setStyleSheet("color: #666; margin-top: 30px;")
+        self.placeholder = self._create_placeholder()
         self.chat_layout.addWidget(self.placeholder)
 
         self.chat_area.setWidget(self.chat_widget)
@@ -341,26 +352,9 @@ class RightPanel(QWidget):
 
     def _clear_chat(self) -> None:
         """Clear chat and start new session."""
-        # Clear UI - remove all message widgets
-        while self.chat_layout.count() > 0:
-            item = self.chat_layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
-
-        # Re-add placeholder
-        self.placeholder = QLabel(
-            "Ask questions about your meetings.\n\n"
-            "Examples:\n"
-            "• What action items came from last week?\n"
-            "• What did we discuss about the API?\n"
-            "• Summarize my meeting with Sarah"
-        )
-        self.placeholder.setWordWrap(True)
-        self.placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.placeholder.setStyleSheet("color: #666; margin-top: 30px;")
+        self._clear_chat_widgets()
+        self.placeholder = self._create_placeholder()
         self.chat_layout.addWidget(self.placeholder)
-
-        # Clear history
         self._chat_history.clear()
 
         # New session
@@ -373,18 +367,11 @@ class RightPanel(QWidget):
 
         self._chat_session_id = session_id
         self._chat_history.clear()
+        self._clear_chat_widgets()
 
-        # Clear current messages
-        while self.chat_layout.count() > 0:
-            item = self.chat_layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
-
-        # Load history from database
         history = self.db.get_chat_history(session_id, CHAT_MAX_HISTORY)
 
         if history:
-            self.placeholder.hide()
             for msg in history:
                 role = msg["role"]
                 content = msg["content"]
@@ -396,6 +383,5 @@ class RightPanel(QWidget):
                 self._add_message(role, content, citations)
                 self._chat_history.append({"role": role, "content": content})
         else:
-            # Show placeholder if no history
+            self.placeholder = self._create_placeholder()
             self.chat_layout.addWidget(self.placeholder)
-            self.placeholder.show()

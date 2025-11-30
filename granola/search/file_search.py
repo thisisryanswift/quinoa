@@ -8,6 +8,8 @@ from typing import Any
 from google import genai
 from google.genai import types
 
+from granola.constants import GEMINI_MODEL_SEARCH
+
 logger = logging.getLogger("granola")
 
 
@@ -173,7 +175,7 @@ When answering:
             logger.debug("Using store: %s", self._store_name)
 
             response = self.client.models.generate_content(
-                model="gemini-2.5-flash",
+                model=GEMINI_MODEL_SEARCH,
                 contents=contents,
                 config=types.GenerateContentConfig(
                     system_instruction=system_instruction,

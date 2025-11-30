@@ -12,17 +12,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-# Speaker colors for visual distinction
-SPEAKER_COLORS = [
-    "#3498db",  # Blue (Me)
-    "#9b59b6",  # Purple
-    "#e67e22",  # Orange
-    "#1abc9c",  # Teal
-    "#e74c3c",  # Red
-    "#2ecc71",  # Green
-    "#f39c12",  # Yellow
-    "#34495e",  # Dark gray
-]
+from granola.ui.styles import SPEAKER_COLORS
 
 
 class UtteranceBubble(QFrame):
@@ -169,13 +159,10 @@ class TranscriptView(QScrollArea):
                 speakers_seen.append(speaker)
 
         for i, speaker in enumerate(speakers_seen):
-            # "Me" always gets the first color (blue)
             if speaker.lower() == "me":
                 self._speaker_colors[speaker] = SPEAKER_COLORS[0]
             else:
                 color_idx = (i + 1) % len(SPEAKER_COLORS)
-                if speaker.lower() == "me":
-                    color_idx = 0
                 self._speaker_colors[speaker] = SPEAKER_COLORS[color_idx]
 
     def _get_display_speaker(self, original: str) -> str:

@@ -171,9 +171,9 @@ pub fn list_devices_pw() -> Result<Vec<Device>, String> {
     mainloop.run();
 
     // Post-process to set is_default
-    let mut result = devices.lock().unwrap().clone();
-    let def_source = default_source.lock().unwrap().clone();
-    let def_sink = default_sink.lock().unwrap().clone();
+    let mut result = devices.lock().expect("devices mutex poisoned").clone();
+    let def_source = default_source.lock().expect("default_source mutex poisoned").clone();
+    let def_sink = default_sink.lock().expect("default_sink mutex poisoned").clone();
     
     for device in &mut result {
         if device.device_type == DeviceType::Microphone {

@@ -1,5 +1,6 @@
 """Middle panel - Notes editor, transcript viewer, and recording controls."""
 
+import json
 import logging
 import os
 import shutil
@@ -34,6 +35,8 @@ from granola.constants import (
     MIN_DISK_SPACE_BYTES,
     NOTES_AUTO_SAVE_INTERVAL_MS,
     TIMER_INTERVAL_MS,
+    PanelMode,
+    ViewType,
 )
 from granola.storage.database import Database
 from granola.ui.enhance_worker import EnhanceWorker
@@ -46,6 +49,7 @@ from granola.ui.styles import (
     LEVEL_METER_SYSTEM,
     MEETING_HEADER_CHIP,
     MEETING_HEADER_TITLE,
+    SPEAKER_COLORS,
     STATUS_LABEL,
     STATUS_LABEL_PAUSED,
     VIEW_SELECTOR_STYLE,
@@ -57,7 +61,7 @@ from granola.ui.transcript_handler import (
     utterances_from_json,
     utterances_to_json,
 )
-from granola.ui.transcript_view import SPEAKER_COLORS, TranscriptView
+from granola.ui.transcript_view import TranscriptView
 
 logger = logging.getLogger("granola")
 
@@ -70,16 +74,6 @@ class MiddlePanel(QWidget):
     recording_stopped = pyqtSignal(str)  # recording_id
     recording_state_changed = pyqtSignal(bool)  # is_recording
     transcription_completed = pyqtSignal(str)  # recording_id
-
-    # Mode constants
-    MODE_IDLE = 0
-    MODE_RECORDING = 1
-    MODE_VIEWING = 2
-
-    # View constants (for viewing mode)
-    VIEW_NOTES = 0
-    VIEW_TRANSCRIPT = 1
-    VIEW_ENHANCED = 2
 
     def __init__(
         self,
@@ -101,11 +95,11 @@ class MiddlePanel(QWidget):
         self.current_rec_id: str | None = None
         self.devices: list = []
         self.device_monitor = None
-        self._mode = self.MODE_IDLE
+        self._mode = PanelMode.IDLE
 
         # Viewing state
         self._viewing_rec_id: str | None = None
-        self._current_view = self.VIEW_TRANSCRIPT
+        self._current_view = ViewType.TRANSCRIPT
         self._cached_notes = ""
         self._cached_transcript = ""
         self._cached_enhanced = ""
@@ -121,6 +115,7 @@ class MiddlePanel(QWidget):
 
         # Transcription worker
         self._worker: TranscribeWorker | None = None
+        self._transcribing_rec_id: str | None = None
 
         # Enhancement worker
         self._enhance_worker: EnhanceWorker | None = None
@@ -161,13 +156,11 @@ class MiddlePanel(QWidget):
 
         layout.addWidget(self.content_stack, stretch=1)
 
-        # Separator
         separator = QFrame()
         separator.setFrameShape(QFrame.Shape.HLine)
         separator.setFrameShadow(QFrame.Shadow.Sunken)
         layout.addWidget(separator)
 
-        # Recording controls section
         controls_widget = self._create_recording_controls()
         layout.addWidget(controls_widget)
 
@@ -313,8 +306,6 @@ class MiddlePanel(QWidget):
         )
 
         if ok and new_name and new_name != current_name:
-            import json
-
             self._cached_speaker_names[original_speaker] = new_name
 
             # Update database
@@ -322,7 +313,7 @@ class MiddlePanel(QWidget):
                 self.db.save_speaker_names(self._viewing_rec_id, json.dumps(self._cached_speaker_names))
 
             # Refresh the transcript view if showing diarized view
-            if self._current_view == self.VIEW_TRANSCRIPT and self._cached_utterances:
+            if self._current_view == ViewType.TRANSCRIPT and self._cached_utterances:
                 self.diarized_transcript_view.set_utterances(
                     self._cached_utterances, self._cached_speaker_names
                 )
@@ -350,7 +341,7 @@ class MiddlePanel(QWidget):
         self.notes_btn = QPushButton("Notes")
         self.notes_btn.setCheckable(True)
         self.notes_btn.setStyleSheet(VIEW_SELECTOR_STYLE)
-        self.view_button_group.addButton(self.notes_btn, self.VIEW_NOTES)
+        self.view_button_group.addButton(self.notes_btn, ViewType.NOTES)
         layout.addWidget(self.notes_btn)
 
         # Transcript button
@@ -358,14 +349,14 @@ class MiddlePanel(QWidget):
         self.transcript_btn.setCheckable(True)
         self.transcript_btn.setChecked(True)  # Default view
         self.transcript_btn.setStyleSheet(VIEW_SELECTOR_STYLE)
-        self.view_button_group.addButton(self.transcript_btn, self.VIEW_TRANSCRIPT)
+        self.view_button_group.addButton(self.transcript_btn, ViewType.TRANSCRIPT)
         layout.addWidget(self.transcript_btn)
 
         # Enhanced button
         self.enhanced_btn = QPushButton("Enhanced")
         self.enhanced_btn.setCheckable(True)
         self.enhanced_btn.setStyleSheet(VIEW_SELECTOR_STYLE)
-        self.view_button_group.addButton(self.enhanced_btn, self.VIEW_ENHANCED)
+        self.view_button_group.addButton(self.enhanced_btn, ViewType.ENHANCED)
         layout.addWidget(self.enhanced_btn)
 
         layout.addStretch()
@@ -383,11 +374,11 @@ class MiddlePanel(QWidget):
 
     def _on_view_changed(self, view_id: int) -> None:
         """Handle view selector button click."""
-        # Save notes if switching away from notes view
-        if self._current_view == self.VIEW_NOTES and view_id != self.VIEW_NOTES:
+        new_view = ViewType(view_id)
+        if self._current_view == ViewType.NOTES and new_view != ViewType.NOTES:
             self._save_current_notes()
 
-        self._current_view = view_id
+        self._current_view = new_view
         self._update_view_content()
 
     def _update_view_content(self) -> None:
@@ -395,11 +386,11 @@ class MiddlePanel(QWidget):
         # Hide enhance button by default
         self.enhance_notes_btn.setVisible(False)
 
-        if self._current_view == self.VIEW_NOTES:
+        if self._current_view == ViewType.NOTES:
             # Show notes in editable notes_editor
             self.notes_editor.set_markdown(self._cached_notes)
             self.content_stack.setCurrentIndex(0)
-        elif self._current_view == self.VIEW_TRANSCRIPT:
+        elif self._current_view == ViewType.TRANSCRIPT:
             # Show transcript - use diarized view if utterances available
             if self._cached_utterances:
                 self.diarized_transcript_view.set_utterances(
@@ -409,7 +400,7 @@ class MiddlePanel(QWidget):
             else:
                 self.transcript_viewer.set_markdown(self._cached_transcript)
                 self.content_stack.setCurrentIndex(1)  # Plain text fallback
-        elif self._current_view == self.VIEW_ENHANCED:
+        elif self._current_view == ViewType.ENHANCED:
             # Show enhanced notes or prompt to generate
             if self._cached_enhanced:
                 self.transcript_viewer.set_markdown(self._cached_enhanced)
@@ -570,11 +561,11 @@ class MiddlePanel(QWidget):
             return
 
         # Save any pending notes from previous view
-        if self._mode == self.MODE_VIEWING and self._current_view == self.VIEW_NOTES:
+        if self._mode == PanelMode.VIEWING and self._current_view == ViewType.NOTES:
             self._save_current_notes()
 
         self._viewing_rec_id = rec_id
-        self._mode = self.MODE_VIEWING
+        self._mode = PanelMode.VIEWING
 
         # Load and cache all data
         transcript_data = self.db.get_transcript(rec_id)
@@ -586,8 +577,6 @@ class MiddlePanel(QWidget):
             self._cached_utterances = utterances_from_json(transcript_data.get("utterances"))
             speaker_names_json = transcript_data.get("speaker_names")
             if speaker_names_json:
-                import json
-
                 try:
                     self._cached_speaker_names = json.loads(speaker_names_json)
                 except json.JSONDecodeError:
@@ -617,7 +606,7 @@ class MiddlePanel(QWidget):
         # Hide recording controls, show view selector
         self.recording_controls_container.setVisible(False)
         self.view_selector_widget.setVisible(True)
-        self._current_view = self.VIEW_TRANSCRIPT
+        self._current_view = ViewType.TRANSCRIPT
         self.transcript_btn.setChecked(True)
 
         # Update button states
@@ -632,11 +621,11 @@ class MiddlePanel(QWidget):
             return
 
         # Save notes if we were editing them
-        if self._mode == self.MODE_VIEWING and self._current_view == self.VIEW_NOTES:
+        if self._mode == PanelMode.VIEWING and self._current_view == ViewType.NOTES:
             self._save_current_notes()
 
         self._viewing_rec_id = None
-        self._mode = self.MODE_IDLE
+        self._mode = PanelMode.IDLE
 
         # Clear cached data
         self._cached_notes = ""
@@ -745,7 +734,7 @@ class MiddlePanel(QWidget):
             self.recording_start_time = time.time()
             self.recording_paused_time = 0
             self.is_paused = False
-            self._mode = self.MODE_RECORDING
+            self._mode = PanelMode.RECORDING
 
             # Add to DB
             mic_name = self.mic_combo.currentText()
@@ -810,7 +799,7 @@ class MiddlePanel(QWidget):
 
         rec_id = self.current_rec_id
         self.recording_session = None
-        self._mode = self.MODE_IDLE
+        self._mode = PanelMode.IDLE
 
         # Stop timers
         self.timer.stop()
@@ -844,7 +833,7 @@ class MiddlePanel(QWidget):
 
     def _save_notes(self):
         """Save current notes to database."""
-        rec_id = self.current_rec_id if self._mode == self.MODE_RECORDING else self._viewing_rec_id
+        rec_id = self.current_rec_id if self._mode == PanelMode.RECORDING else self._viewing_rec_id
         if rec_id:
             notes = self._get_notes_text()
             if notes:
@@ -853,7 +842,7 @@ class MiddlePanel(QWidget):
 
     def _save_current_notes(self):
         """Save notes from the editor when in viewing mode."""
-        if self._viewing_rec_id and self._current_view == self.VIEW_NOTES:
+        if self._viewing_rec_id and self._current_view == ViewType.NOTES:
             notes = self.notes_editor.get_markdown()
             self._cached_notes = notes  # Update cache
             if notes:
@@ -871,8 +860,6 @@ class MiddlePanel(QWidget):
     def _on_speaker_names_changed(self, speaker_names: dict[str, str]):
         """Handle speaker names being edited."""
         if self._viewing_rec_id:
-            import json
-
             self._cached_speaker_names = speaker_names
             self.db.save_speaker_names(self._viewing_rec_id, json.dumps(speaker_names))
             self._update_speaker_chips()  # Refresh header chips
@@ -889,59 +876,66 @@ class MiddlePanel(QWidget):
     def _update_timer(self):
         """Update timer display and poll events."""
         if self.recording_session:
-            # Calculate elapsed time
-            if self.is_paused:
-                current_pause = time.time() - self.pause_start_time
-                elapsed = (
-                    time.time()
-                    - self.recording_start_time
-                    - self.recording_paused_time
-                    - current_pause
-                )
-            else:
-                elapsed = time.time() - self.recording_start_time - self.recording_paused_time
+            self._update_elapsed_time()
+            self._poll_recording_events()
+        self._poll_device_events()
 
-            mins = int(elapsed // 60)
-            secs = int(elapsed % 60)
+    def _update_elapsed_time(self):
+        """Update the elapsed time display."""
+        if self.is_paused:
+            current_pause = time.time() - self.pause_start_time
+            elapsed = (
+                time.time()
+                - self.recording_start_time
+                - self.recording_paused_time
+                - current_pause
+            )
+        else:
+            elapsed = time.time() - self.recording_start_time - self.recording_paused_time
 
-            if self.is_paused:
-                self.status_label.setText(f"Paused: {mins:02d}:{secs:02d}")
-            else:
-                self.status_label.setText(f"Recording: {mins:02d}:{secs:02d}")
+        mins = int(elapsed // 60)
+        secs = int(elapsed % 60)
 
-            # Poll recording events
-            try:
-                events = self.recording_session.poll_events()
-                for event in events:
-                    if event.type_ == "levels":
-                        if event.mic_level is not None:
-                            self.mic_level_bar.setValue(min(100, int(event.mic_level * 100)))
-                        if event.system_level is not None:
-                            self.sys_level_bar.setValue(min(100, int(event.system_level * 100)))
-                    elif event.type_ == "paused":
-                        self.is_paused = True
-                        self.pause_start_time = time.time()
-                        self.pause_btn.setText("Resume")
-                        self.status_label.setStyleSheet(STATUS_LABEL_PAUSED)
-                    elif event.type_ == "resumed":
-                        self.is_paused = False
-                        self.recording_paused_time += time.time() - self.pause_start_time
-                        self.pause_btn.setText("Pause")
-                        self.status_label.setStyleSheet(STATUS_LABEL)
-                    elif event.type_ == "stopped":
-                        self._stop_recording()
-                    elif event.type_ == "error":
-                        self._handle_audio_error(event.message)
-                    elif event.type_ == "pipewire_disconnected":
-                        self.status_label.setText("Reconnecting...")
-                        self.status_label.setStyleSheet(STATUS_LABEL_PAUSED)
-                    elif event.type_ == "started":
-                        self.status_label.setText("Recording...")
-                        self.status_label.setStyleSheet(STATUS_LABEL)
-            except Exception as e:
-                logger.error("Error polling events: %s", e)
+        if self.is_paused:
+            self.status_label.setText(f"Paused: {mins:02d}:{secs:02d}")
+        else:
+            self.status_label.setText(f"Recording: {mins:02d}:{secs:02d}")
 
-        # Poll device monitor
+    def _poll_recording_events(self):
+        """Poll and handle recording events."""
+        try:
+            events = self.recording_session.poll_events()
+            for event in events:
+                if event.type_ == "levels":
+                    if event.mic_level is not None:
+                        self.mic_level_bar.setValue(min(100, int(event.mic_level * 100)))
+                    if event.system_level is not None:
+                        self.sys_level_bar.setValue(min(100, int(event.system_level * 100)))
+                elif event.type_ == "paused":
+                    self.is_paused = True
+                    self.pause_start_time = time.time()
+                    self.pause_btn.setText("Resume")
+                    self.status_label.setStyleSheet(STATUS_LABEL_PAUSED)
+                elif event.type_ == "resumed":
+                    self.is_paused = False
+                    self.recording_paused_time += time.time() - self.pause_start_time
+                    self.pause_btn.setText("Pause")
+                    self.status_label.setStyleSheet(STATUS_LABEL)
+                elif event.type_ == "stopped":
+                    self._stop_recording()
+                elif event.type_ == "error":
+                    self._handle_audio_error(event.message)
+                elif event.type_ == "pipewire_disconnected":
+                    self.status_label.setText("Reconnecting...")
+                    self.status_label.setStyleSheet(STATUS_LABEL_PAUSED)
+                elif event.type_ == "started":
+                    self.status_label.setText("Recording...")
+                    self.status_label.setStyleSheet(STATUS_LABEL)
+        except Exception as e:
+            logger.error("Error polling events: %s", e)
+
+    def _poll_device_events(self):
+        """Poll device monitor for hot-plug events."""
         if self.device_monitor:
             try:
                 device_events = self.device_monitor.poll()
@@ -975,7 +969,7 @@ class MiddlePanel(QWidget):
             return
 
         # Determine which recording to transcribe
-        if self._mode == self.MODE_VIEWING and self._viewing_rec_id:
+        if self._mode == PanelMode.VIEWING and self._viewing_rec_id:
             rec = self.db.get_recording(self._viewing_rec_id)
             if not rec:
                 QMessageBox.warning(self, "Error", "Recording not found.")
@@ -1021,13 +1015,14 @@ class MiddlePanel(QWidget):
         self._update_speaker_chips()
 
         # Display using diarized view if utterances available
-        if self._mode == self.MODE_VIEWING and utterances:
+        if self._mode == PanelMode.VIEWING and utterances:
             self.diarized_transcript_view.set_utterances(utterances, {})
             self.content_stack.setCurrentIndex(2)  # Diarized view
-        elif self._mode == self.MODE_VIEWING:
-            notes = self.db.get_notes(self._transcribing_rec_id)
-            if notes:
-                display_text = f"## Notes\n{notes}\n\n{display_text}"
+        elif self._mode == PanelMode.VIEWING:
+            if self._transcribing_rec_id:
+                notes = self.db.get_notes(self._transcribing_rec_id)
+                if notes:
+                    display_text = f"## Notes\n{notes}\n\n{display_text}"
             self.transcript_viewer.set_markdown(display_text)
             self.content_stack.setCurrentIndex(1)
         else:
@@ -1035,15 +1030,14 @@ class MiddlePanel(QWidget):
             self.content_stack.setCurrentIndex(1)  # Show transcript
 
         # Save to DB
-        rec_id = getattr(self, "_transcribing_rec_id", None)
-        if rec_id:
+        if self._transcribing_rec_id:
             utterances_json = utterances_to_json(utterances) if utterances else None
             self.db.save_transcript(
-                rec_id, result["transcript"], result["summary"], utterances_json
+                self._transcribing_rec_id, result["transcript"], result["summary"], utterances_json
             )
             if not result["parse_error"]:
-                self.db.save_action_items(rec_id, result["action_items"])
-            self.transcription_completed.emit(rec_id)
+                self.db.save_action_items(self._transcribing_rec_id, result["action_items"])
+            self.transcription_completed.emit(self._transcribing_rec_id)
             if self.on_history_changed:
                 self.on_history_changed()
 
