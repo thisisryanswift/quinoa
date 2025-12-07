@@ -1,11 +1,11 @@
 import os
 import wave
 
-from granola.transcription.processor import create_stereo_mix
+from quinoa.transcription.processor import create_stereo_mix
 
 
 def test_mixing():
-    output_dir = "/tmp/granola_test"
+    output_dir = "/tmp/quinoa_test"
     mic_path = os.path.join(output_dir, "microphone.wav")
     sys_path = os.path.join(output_dir, "system.wav")
     stereo_path = os.path.join(output_dir, "mixed_stereo.wav")

@@ -1,6 +1,6 @@
 import keyring
 
-from granola.config import config
+from quinoa.config import config
 
 
 def test_config_keyring():
@@ -12,7 +12,7 @@ def test_config_keyring():
     config.set("api_key", test_key)
 
     # Verify it's in keyring
-    stored_key = keyring.get_password("granola-linux", "gemini_api_key")
+    stored_key = keyring.get_password("quinoa", "gemini_api_key")
     print(f"Key in keyring: {stored_key}")
 
     if stored_key == test_key:
@@ -32,7 +32,7 @@ def test_config_keyring():
     # Clean up
     print("Cleaning up...")
     config.set("api_key", "")
-    stored_key_after = keyring.get_password("granola-linux", "gemini_api_key")
+    stored_key_after = keyring.get_password("quinoa", "gemini_api_key")
     if stored_key_after is None:
         print("SUCCESS: Key deleted from keyring")
     else:

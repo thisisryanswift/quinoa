@@ -1,4 +1,4 @@
-# Granola Linux
+# Quinoa
 
 A meeting recording and transcription app for Linux. Records microphone and system audio separately, then uses Google Gemini for transcription with speaker diarization.
 
@@ -6,7 +6,7 @@ A meeting recording and transcription app for Linux. Records microphone and syst
 
 - **Dual-Channel Recording**: Captures your microphone and system audio (meeting participants) as separate tracks
 - **Non-Invasive**: Uses PipeWire monitor ports - works alongside Google Meet, Zoom, etc. without interference
-- **AI Transcription**: Google Gemini 2.0 Flash with speaker diarization, summaries, and action items
+- **AI Transcription**: Google Gemini 2.5 Flash with speaker diarization, summaries, and action items
 - **Bluetooth Support**: Works with Bluetooth headsets in HFP/HSP mode
 - **Device Hot-Plug**: Automatically detects when audio devices are connected/disconnected
 - **Pause/Resume**: Pause recording during breaks without creating multiple files
@@ -22,7 +22,7 @@ A meeting recording and transcription app for Linux. Records microphone and syst
 │         │          └──────────────┘                          │
 │         ▼                                                    │
 │  ┌───────────────────────────────────────────────────────┐  │
-│  │            granola_audio (Rust + PyO3)                │  │
+│  │            quinoa_audio (Rust + PyO3)                │  │
 │  │         PipeWire capture, device management           │  │
 │  └───────────────────────────────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────┘
@@ -40,8 +40,8 @@ A meeting recording and transcription app for Linux. Records microphone and syst
 ## Project Structure
 
 ```
-granola-linux/
-├── granola/                    # Python application
+quinoa/
+├── quinoa/                    # Python application
 │   ├── main.py                 # Entry point
 │   ├── config.py               # Configuration (keyring for API key)
 │   ├── constants.py            # Application constants
@@ -57,7 +57,7 @@ granola-linux/
 │       ├── transcribe_worker.py # Background transcription
 │       └── transcript_handler.py # Transcript parsing utilities
 │
-├── granola_audio/              # Rust audio library
+├── quinoa_audio/              # Rust audio library
 │   └── src/
 │       ├── lib.rs              # PyO3 bindings
 │       ├── capture/
@@ -101,7 +101,7 @@ uv pip install maturin PyQt6 google-genai keyring pydantic
 uv pip install -e ".[dev]"  # Includes ruff, mypy, pytest
 
 # Build Rust extension with PipeWire support
-cd granola_audio
+cd quinoa_audio
 maturin develop --features real-audio
 cd ..
 ```
@@ -111,10 +111,10 @@ cd ..
 ```bash
 # Option 1: Set API key via environment (temporary)
 export GEMINI_API_KEY="your_key"
-python -m granola.main
+python -m quinoa.main
 
 # Option 2: Set via Settings dialog (stored in system keyring)
-python -m granola.main
+python -m quinoa.main
 # Then go to Settings and enter your API key
 ```
 
@@ -122,17 +122,17 @@ python -m granola.main
 
 ```bash
 # Run with mock audio backend (no PipeWire needed)
-cd granola_audio
+cd quinoa_audio
 maturin develop  # Without --features real-audio
 cd ..
-python -m granola.main --test
+python -m quinoa.main --test
 
 # Run integration tests
 pytest tests/python/
 
 # Lint and type check
-ruff check granola/ tests/
-mypy granola/
+ruff check quinoa/ tests/
+mypy quinoa/
 ```
 
 ## Usage
@@ -157,14 +157,14 @@ mypy granola/
 
 | Data | Location |
 |------|----------|
-| Recordings | `~/Music/Granola/{session_id}/` |
-| Database | `~/.local/share/granola/granola.db` |
-| Config | `~/.config/granola/config.json` |
+| Recordings | `~/Music/Quinoa/{session_id}/` |
+| Database | `~/.local/share/quinoa/quinoa.db` |
+| Config | `~/.config/quinoa/config.json` |
 | API Key | System keyring (secure) |
 
 Each recording session creates:
 ```
-~/Music/Granola/rec_20241115_143022/
+~/Music/Quinoa/rec_20241115_143022/
 ├── microphone.wav      # Your voice
 ├── system.wav          # Meeting participants
 └── mixed_stereo.wav    # Combined (for transcription)

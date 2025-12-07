@@ -2,7 +2,7 @@ import os
 import shutil
 import time
 
-import granola_audio
+import quinoa_audio
 
 print("Granola Recording Test")
 print("----------------------")
@@ -14,9 +14,9 @@ if os.path.exists(OUTPUT_DIR):
     shutil.rmtree(OUTPUT_DIR)
 
 try:
-    devices = granola_audio.list_devices()
+    devices = quinoa_audio.list_devices()
     mic = next(
-        (d for d in devices if d.device_type == granola_audio.DeviceType.Microphone),
+        (d for d in devices if d.device_type == quinoa_audio.DeviceType.Microphone),
         None,
     )
 
@@ -26,7 +26,7 @@ try:
 
     print(f"Using microphone: {mic.name} ({mic.id})")
 
-    config = granola_audio.RecordingConfig(
+    config = quinoa_audio.RecordingConfig(
         output_dir=OUTPUT_DIR,
         mic_device_id=mic.id,
         system_audio=False,
@@ -34,7 +34,7 @@ try:
     )
 
     print("Starting recording...")
-    session = granola_audio.start_recording(config)
+    session = quinoa_audio.start_recording(config)
 
     print("Recording for 5 seconds...")
     time.sleep(5)

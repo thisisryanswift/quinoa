@@ -1,0 +1,22 @@
+[package]
+name = "quinoa_audio"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "quinoa_audio"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.23", features = ["extension-module"] }
+pipewire = { version = "0.8", optional = true }
+hound = "3.5"
+thiserror = "1.0"
+tokio = { version = "1", features = ["rt", "sync"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+[features]
+default = ["mock"]
+real-audio = ["dep:pipewire"]
+mock = []

@@ -4,12 +4,12 @@ import time
 
 import pytest
 
-import granola_audio
+import quinoa_audio
 
 
 @pytest.fixture
 def output_dir():
-    path = "/tmp/granola_test_integration"
+    path = "/tmp/quinoa_test_integration"
     if os.path.exists(path):
         shutil.rmtree(path)
     os.makedirs(path)
@@ -23,7 +23,7 @@ def test_recording_lifecycle(output_dir):
     Test the full lifecycle of a recording session using the mock backend.
     """
     # 1. Configure
-    config = granola_audio.RecordingConfig(
+    config = quinoa_audio.RecordingConfig(
         output_dir=output_dir,
         mic_device_id="mock_mic",
         system_audio=True,
@@ -31,7 +31,7 @@ def test_recording_lifecycle(output_dir):
     )
 
     # 2. Start
-    session = granola_audio.start_recording(config)
+    session = quinoa_audio.start_recording(config)
     assert session is not None
 
     # 3. Poll for events

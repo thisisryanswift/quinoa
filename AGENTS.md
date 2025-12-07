@@ -1,10 +1,10 @@
-# Agent Guidelines for Granola Linux
+# Agent Guidelines for Quinoa
 
-This document provides guidance for AI agents working on the Granola Linux codebase.
+This document provides guidance for AI agents working on the Quinoa codebase.
 
 ## Project Overview
 
-Granola Linux is a meeting recording and transcription application. It uses:
+Quinoa is a meeting recording and transcription application. It uses:
 - **Python (PyQt6)** for the GUI and application logic
 - **Rust (PyO3)** for audio capture via PipeWire
 - **Google Gemini** for AI transcription
@@ -16,8 +16,8 @@ Granola Linux is a meeting recording and transcription application. It uses:
 
 All Python code must pass:
 ```bash
-ruff check granola/ tests/
-mypy granola/
+ruff check quinoa/ tests/
+mypy quinoa/
 ```
 
 Rust code should compile without warnings:
@@ -29,39 +29,39 @@ cargo check --features real-audio
 
 - **Python**: Follow ruff's default rules (pycodestyle, pyflakes, isort, flake8-bugbear)
 - **Type Hints**: Use modern Python 3.10+ syntax (`str | None` not `Optional[str]`)
-- **Logging**: Use the `granola` logger, never `print()` statements
-- **Constants**: Hard-coded values go in `granola/constants.py`
-- **Stylesheets**: UI styles go in `granola/ui/styles.py`
+- **Logging**: Use the `quinoa` logger, never `print()` statements
+- **Constants**: Hard-coded values go in `quinoa/constants.py`
+- **Stylesheets**: UI styles go in `quinoa/ui/styles.py`
 
 ### File Organization
 
 | Type | Location |
 |------|----------|
-| Constants | `granola/constants.py` |
-| Logging config | `granola/logging.py` |
-| UI styles | `granola/ui/styles.py` |
-| Database ops | `granola/storage/database.py` |
-| Transcription | `granola/transcription/` |
-| UI components | `granola/ui/` |
+| Constants | `quinoa/constants.py` |
+| Logging config | `quinoa/logging.py` |
+| UI styles | `quinoa/ui/styles.py` |
+| Database ops | `quinoa/storage/database.py` |
+| Transcription | `quinoa/transcription/` |
+| UI components | `quinoa/ui/` |
 
 ## Key Files to Understand
 
-1. **`granola/ui/main_window.py`** (~805 lines) - Main application window, recording controls, history tab
-2. **`granola/storage/database.py`** - SQLite operations for recordings, transcripts, action items
-3. **`granola/config.py`** - Configuration with keyring integration for API key storage
-4. **`granola_audio/src/capture/session.rs`** - Rust recording session with PipeWire integration
+1. **`quinoa/ui/main_window.py`** (~805 lines) - Main application window, recording controls, history tab
+2. **`quinoa/storage/database.py`** - SQLite operations for recordings, transcripts, action items
+3. **`quinoa/config.py`** - Configuration with keyring integration for API key storage
+4. **`quinoa_audio/src/capture/session.rs`** - Rust recording session with PipeWire integration
 
 ## Common Tasks
 
 ### Adding a New Constant
 
-1. Add to `granola/constants.py`
+1. Add to `quinoa/constants.py`
 2. Import and use in relevant files
 3. Run `ruff check` and `mypy`
 
 ### Adding UI Styles
 
-1. Add to `granola/ui/styles.py`
+1. Add to `quinoa/ui/styles.py`
 2. Import and apply in `main_window.py` or relevant component
 3. Keep styles DRY - use functions for parameterized styles
 
@@ -82,7 +82,7 @@ cargo check --features real-audio
 
 ### Quick Smoke Test
 ```bash
-python -m granola.main --test
+python -m quinoa.main --test
 ```
 This starts a 3-second recording and exits.
 
@@ -111,17 +111,14 @@ Security best practice - API keys are stored in the system keyring (GNOME Keyrin
 
 ## Remaining Work
 
-See `ACTION_PLAN.md` for detailed refactoring status. Current remaining items:
-- Database helper methods (optional cleanup)
-- Gemini model configurability
-- Further UI component extraction (if main_window.py grows)
+See `ROADMAP.md` for planned features, known issues, and completed milestones.
 
 ## Troubleshooting
 
-### "No module named granola_audio"
+### "No module named quinoa_audio"
 Rebuild the Rust extension:
 ```bash
-cd granola_audio && maturin develop --features real-audio && cd ..
+cd quinoa_audio && maturin develop --features real-audio && cd ..
 ```
 
 ### Missing Python dependencies
@@ -133,11 +130,11 @@ uv pip install -e ".[dev]"
 ### Type errors after changes
 Run mypy to catch issues:
 ```bash
-mypy granola/
+mypy quinoa/
 ```
 
 ### Import sorting issues
 Auto-fix with ruff:
 ```bash
-ruff check --fix granola/
+ruff check --fix quinoa/
 ```

@@ -3,7 +3,7 @@ requires = ["maturin>=1.5,<2.0"]
 build-backend = "maturin"
 
 [project]
-name = "granola"
+name = "quinoa"
 version = "0.1.0"
 description = "A meeting recording and transcription app for Linux"
 requires-python = ">=3.12"
@@ -25,8 +25,8 @@ dev = [
 
 [tool.maturin]
 features = ["pyo3/extension-module", "real-audio"]
-module-name = "granola_audio"
-manifest-path = "granola_audio/Cargo.toml"
+module-name = "quinoa_audio"
+manifest-path = "quinoa_audio/Cargo.toml"
 
 # Ruff - fast Python linter and formatter
 [tool.ruff]

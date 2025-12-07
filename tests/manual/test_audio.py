@@ -1,7 +1,7 @@
 import os
 import time
 
-import granola_audio
+import quinoa_audio
 
 print("Granola Audio Test")
 print("==================")
@@ -9,7 +9,7 @@ print("==================")
 # Test 1: List devices
 print("\n1. Listing devices...")
 try:
-    devices = granola_audio.list_devices()
+    devices = quinoa_audio.list_devices()
     print(f"Found {len(devices)} devices:")
     mic_device = None
     for device in devices:
@@ -19,7 +19,7 @@ try:
         )
         # Pick first microphone for testing
         if (
-            device.device_type == granola_audio.DeviceType.Microphone
+            device.device_type == quinoa_audio.DeviceType.Microphone
             and mic_device is None
         ):
             mic_device = device
@@ -32,10 +32,10 @@ print("\n2. Testing recording...")
 if mic_device:
     print(f"Using microphone: {mic_device.name} (ID: {mic_device.id})")
 
-    output_dir = "/tmp/granola_test"
+    output_dir = "/tmp/quinoa_test"
     os.makedirs(output_dir, exist_ok=True)
 
-    config = granola_audio.RecordingConfig(
+    config = quinoa_audio.RecordingConfig(
         output_dir=output_dir,
         mic_device_id=mic_device.id,
         system_audio=True,
@@ -44,7 +44,7 @@ if mic_device:
 
     print(f"Starting recording to {output_dir}...")
     try:
-        session = granola_audio.start_recording(config)
+        session = quinoa_audio.start_recording(config)
         print("Recording started! Recording for 3 seconds...")
         print("Please play some audio on your system now!")
         time.sleep(3)
