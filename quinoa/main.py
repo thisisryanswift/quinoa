@@ -2,10 +2,10 @@ import argparse
 import sys
 
 from PyQt6.QtCore import QTimer
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtWidgets import QApplication, QMessageBox
 
+from quinoa.compatibility import get_distro_name, is_pipewire_installed, is_pipewire_running
 from quinoa.logging import logger, setup_logging
-from quinoa.ui.main_window import MainWindow
 
 
 def main():
@@ -19,6 +19,53 @@ def main():
     setup_logging(verbose=args.verbose)
 
     app = QApplication(sys.argv)
+
+    # Check for PipeWire availability
+    if not is_pipewire_running():
+        msg = "PipeWire audio service is not running."
+        info = "Quinoa requires PipeWire for audio recording."
+
+        if not is_pipewire_installed():
+            info += "\n\nPipeWire does not appear to be installed."
+            distro = get_distro_name()
+            if "Ubuntu" in distro:
+                info += "\nOn Ubuntu 22.04 or earlier, you may need to install 'pipewire' and 'pipewire-pulse'."
+        else:
+            info += "\n\nPipeWire is installed but the service is not active."
+            info += "\nTry running: systemctl --user start pipewire"
+
+        # If in test mode, just log it. If interactive, show warning.
+        if args.test:
+            logger.warning(f"{msg} {info}")
+        else:
+            mbox = QMessageBox()
+            mbox.setIcon(QMessageBox.Icon.Warning)
+            mbox.setWindowTitle("PipeWire Missing")
+            mbox.setText(msg)
+            mbox.setInformativeText(info)
+            mbox.setStandardButtons(QMessageBox.StandardButton.Ok | QMessageBox.StandardButton.Cancel)
+            ret = mbox.exec()
+            if ret == QMessageBox.StandardButton.Cancel:
+                sys.exit(1)
+
+    try:
+        from quinoa.ui.main_window import MainWindow
+    except ImportError as e:
+        logger.error(f"Failed to load application: {e}")
+        if "libpipewire" in str(e) or "quinoa_audio" in str(e):
+            mbox = QMessageBox()
+            mbox.setIcon(QMessageBox.Icon.Critical)
+            mbox.setWindowTitle("Dependency Error")
+            mbox.setText("Failed to load audio component.")
+            info = f"Error: {e}\n\nThis usually means the PipeWire shared libraries are missing."
+            distro = get_distro_name()
+            if "Ubuntu" in distro:
+                info += "\n\nOn Ubuntu, try installing: libpipewire-0.3-0 or libpipewire-0.3-dev"
+            mbox.setInformativeText(info)
+            mbox.exec()
+            sys.exit(1)
+        raise
+
     window = MainWindow()
     window.show()
 

@@ -11,6 +11,22 @@ A meeting recording and transcription app for Linux. Records microphone and syst
 - **Device Hot-Plug**: Automatically detects when audio devices are connected/disconnected
 - **Pause/Resume**: Pause recording during breaks without creating multiple files
 
+## System Requirements
+
+Quinoa works on modern Linux distributions. It explicitly requires **PipeWire** for audio capture.
+
+### Ubuntu Compatibility
+
+- **Ubuntu 22.10 and newer**: PipeWire is the default. Works out of the box.
+- **Ubuntu 22.04 LTS**: Uses PulseAudio by default. You must enable PipeWire:
+  ```bash
+  # Install PipeWire and compatibility layer
+  sudo apt install pipewire pipewire-pulse
+
+  # Enable and start the service
+  systemctl --user --now enable pipewire pipewire-pulse
+  ```
+
 ## Architecture
 
 ```
@@ -88,6 +104,8 @@ sudo dnf install pipewire-devel
 # Ubuntu/Debian
 sudo apt install libpipewire-0.3-dev
 ```
+
+> **Note**: If you are on Ubuntu 22.04, ensure you have enabled PipeWire as described in [System Requirements](#system-requirements).
 
 ### Building
 
