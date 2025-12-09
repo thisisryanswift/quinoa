@@ -6,6 +6,9 @@ from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QKeySequence, QShortcut
 from PyQt6.QtWidgets import QMainWindow, QSplitter
 
+from quinoa.audio.compression_worker import CompressionWorker
+from quinoa.calendar import is_authenticated as calendar_is_authenticated
+from quinoa.calendar.sync_worker import CalendarSyncWorker
 from quinoa.config import config
 from quinoa.constants import (
     FILE_SEARCH_DELAY_MS,
@@ -18,7 +21,7 @@ from quinoa.constants import (
 from quinoa.search.file_search import FileSearchManager
 from quinoa.search.sync_worker import SyncWorker
 from quinoa.storage.database import Database
-from quinoa.ui.left_panel import LeftPanel
+from quinoa.ui.calendar_panel import CalendarPanel
 from quinoa.ui.middle_panel import MiddlePanel
 from quinoa.ui.right_panel import RightPanel
 from quinoa.ui.settings_dialog import SettingsDialog
@@ -43,6 +46,12 @@ class MainWindow(QMainWindow):
         self._file_search: FileSearchManager | None = None
         self._sync_worker: SyncWorker | None = None
 
+        # Calendar sync worker (initialized later if authenticated)
+        self._calendar_sync_worker: CalendarSyncWorker | None = None
+
+        # Compression worker (for converting WAV -> FLAC after transcription)
+        self._compression_worker: CompressionWorker | None = None
+
         # Flag to distinguish quit vs minimize-to-tray
         self._quitting = False
 
@@ -52,9 +61,10 @@ class MainWindow(QMainWindow):
         self.splitter.setStyleSheet(SPLITTER_STYLE)
         self.setCentralWidget(self.splitter)
 
-        # Left panel - Navigation
-        self.left_panel = LeftPanel(self.db)
-        self.left_panel.meeting_selected.connect(self._on_meeting_selected)
+        # Left panel - Calendar/Navigation
+        self.left_panel = CalendarPanel(self.db)
+        self.left_panel.meeting_selected.connect(self._on_calendar_meeting_selected)
+        self.left_panel.recording_selected.connect(self._on_meeting_selected)
         self.left_panel.new_meeting_requested.connect(self._on_new_meeting)
         self.left_panel.settings_requested.connect(self._open_settings)
         self.splitter.addWidget(self.left_panel)
@@ -109,6 +119,12 @@ class MainWindow(QMainWindow):
 
         # Initialize File Search if enabled
         self._init_file_search()
+
+        # Initialize Calendar sync if authenticated
+        self._init_calendar_sync()
+
+        # Initialize compression worker for background WAV -> FLAC conversion
+        self._init_compression_worker()
 
     def _setup_shortcuts(self):
         """Setup keyboard shortcuts."""
@@ -227,6 +243,98 @@ class MainWindow(QMainWindow):
             self._file_search = None
             self._sync_worker = None
 
+    def _init_calendar_sync(self) -> None:
+        """Initialize Calendar sync worker if authenticated."""
+        if self._calendar_sync_worker is not None:
+            logger.debug("Calendar sync worker already running")
+            return
+
+        if not calendar_is_authenticated():
+            logger.debug("Calendar sync not initialized: not authenticated")
+            return
+
+        try:
+            self._calendar_sync_worker = CalendarSyncWorker(self.db)
+            self._calendar_sync_worker.sync_started.connect(self._on_calendar_sync_started)
+            self._calendar_sync_worker.sync_completed.connect(self._on_calendar_sync_completed)
+            self._calendar_sync_worker.sync_failed.connect(self._on_calendar_sync_failed)
+            self._calendar_sync_worker.events_updated.connect(self._on_calendar_events_updated)
+            self._calendar_sync_worker.start()
+            logger.info("Calendar sync worker started")
+        except Exception as e:
+            logger.error("Failed to initialize Calendar sync: %s", e)
+            self._calendar_sync_worker = None
+
+    def _stop_calendar_sync(self) -> None:
+        """Stop the calendar sync worker."""
+        if self._calendar_sync_worker:
+            self._calendar_sync_worker.stop()
+            self._calendar_sync_worker.wait(2000)
+            self._calendar_sync_worker = None
+            logger.info("Calendar sync worker stopped")
+
+    def _init_compression_worker(self) -> None:
+        """Initialize background compression worker."""
+        try:
+            self._compression_worker = CompressionWorker(self.db)
+            self._compression_worker.compression_started.connect(
+                lambda rec_id: logger.debug("Compressing recording %s", rec_id)
+            )
+            self._compression_worker.compression_completed.connect(
+                lambda rec_id, count: logger.info(
+                    "Compressed %d files for recording %s", count, rec_id
+                )
+            )
+            self._compression_worker.compression_failed.connect(
+                lambda rec_id, err: logger.warning("Compression failed for %s: %s", rec_id, err)
+            )
+            self._compression_worker.start()
+            logger.info("Compression worker started")
+        except Exception as e:
+            logger.error("Failed to start compression worker: %s", e)
+            self._compression_worker = None
+
+    def _stop_compression_worker(self) -> None:
+        """Stop the compression worker."""
+        if self._compression_worker:
+            self._compression_worker.stop()
+            self._compression_worker.wait(2000)
+            self._compression_worker = None
+            logger.info("Compression worker stopped")
+
+    def _on_calendar_sync_started(self) -> None:
+        """Handle calendar sync started."""
+        logger.debug("Calendar sync started")
+
+    def _on_calendar_sync_completed(self, count: int) -> None:
+        """Handle calendar sync completed."""
+        logger.debug("Calendar sync completed: %d events", count)
+
+    def _on_calendar_sync_failed(self, error: str) -> None:
+        """Handle calendar sync failed."""
+        logger.warning("Calendar sync failed: %s", error)
+
+    def _on_calendar_events_updated(self, changed: bool) -> None:
+        """Handle calendar events updated - refresh left panel only if data changed."""
+        if changed:
+            self.left_panel.refresh()
+
+    def _on_calendar_connected(self) -> None:
+        """Handle calendar connection from settings dialog."""
+        # Start the sync worker
+        self._init_calendar_sync()
+        # Trigger immediate sync
+        if self._calendar_sync_worker:
+            self._calendar_sync_worker.sync_now()
+
+    def _on_calendar_disconnected(self) -> None:
+        """Handle calendar disconnection from settings dialog."""
+        self._stop_calendar_sync()
+        # Clear calendar events from database
+        self.db.clear_calendar_events()
+        # Refresh left panel
+        self.left_panel.refresh()
+
     def _on_store_ready(self, store_name: str) -> None:
         """Handle store ready signal - save store name to config."""
         config.set("file_search_store_name", store_name)
@@ -242,8 +350,13 @@ class MainWindow(QMainWindow):
         logger.warning("Failed to sync recording %s: %s", rec_id, error)
 
     def _on_meeting_selected(self, rec_id: str):
-        """Handle meeting selection from left panel."""
+        """Handle recording selection from left panel."""
         self.middle_panel.load_meeting(rec_id)
+
+    def _on_calendar_meeting_selected(self, event_id: str):
+        """Handle calendar event selection (unrecorded meeting)."""
+        # Load the calendar event details in the middle panel
+        self.middle_panel.load_calendar_event(event_id)
 
     def _on_new_meeting(self):
         """Handle new meeting request - return to idle/recording mode."""
@@ -252,6 +365,8 @@ class MainWindow(QMainWindow):
     def _open_settings(self):
         """Open settings dialog."""
         dialog = SettingsDialog(self)
+        dialog.calendar_connected.connect(self._on_calendar_connected)
+        dialog.calendar_disconnected.connect(self._on_calendar_disconnected)
         dialog.exec()
 
     def _on_history_changed(self):
@@ -304,6 +419,10 @@ class MainWindow(QMainWindow):
             if self._sync_worker:
                 self._sync_worker.stop()
                 self._sync_worker.wait(2000)  # Wait up to 2 seconds
+            # Stop calendar sync worker
+            self._stop_calendar_sync()
+            # Stop compression worker
+            self._stop_compression_worker()
             # Stop device monitor
             self.middle_panel.stop_device_monitor()
             event.accept()

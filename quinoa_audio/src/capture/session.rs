@@ -39,6 +39,8 @@ pub enum InternalAudioEvent {
     Levels { mic: f32, system: f32 },
     DeviceLost(String),
     PipeWireDisconnected,
+    MicSwitched(String),
+    MicSwitchFailed { requested: String, fallback: Option<String> },
 }
 
 impl From<InternalAudioEvent> for AudioEvent {
@@ -100,6 +102,20 @@ impl From<InternalAudioEvent> for AudioEvent {
                 message: None,
                 device_id: None,
             },
+            InternalAudioEvent::MicSwitched(id) => AudioEvent {
+                type_: "mic_switched".to_string(),
+                mic_level: None,
+                system_level: None,
+                message: None,
+                device_id: Some(id),
+            },
+            InternalAudioEvent::MicSwitchFailed { requested, fallback } => AudioEvent {
+                type_: "mic_switch_failed".to_string(),
+                mic_level: None,
+                system_level: None,
+                message: Some(format!("Failed to switch to {}. Fallback: {:?}", requested, fallback)),
+                device_id: fallback,
+            },
         }
     }
 }
@@ -140,6 +156,7 @@ enum AudioCommand {
     Stop,
     Pause,
     Resume,
+    SwitchMic(String),
 }
 
 #[pyclass]
@@ -194,6 +211,14 @@ impl RecordingSession {
         }
         Ok(events)
     }
+
+    fn switch_mic(&self, new_device_id: String) -> PyResult<()> {
+        if let Some(tx) = &self.command_tx {
+            tx.send(AudioCommand::SwitchMic(new_device_id))
+                .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to send switch_mic command: {}", e)))?;
+        }
+        Ok(())
+    }
 }
 
 pub fn start_recording_impl(config: RecordingConfig) -> PyResult<RecordingSession> {
@@ -217,6 +242,7 @@ pub fn start_recording_impl(config: RecordingConfig) -> PyResult<RecordingSessio
             let _ = event_tx.send(InternalAudioEvent::Started);
             
             let mut is_paused = false;
+            let mut current_mic = config_clone.mic_device_id.clone();
             loop {
                 // Simulate some levels (only when not paused)
                 if !is_paused {
@@ -241,6 +267,11 @@ pub fn start_recording_impl(config: RecordingConfig) -> PyResult<RecordingSessio
                         println!("Mock recording resumed");
                         is_paused = false;
                         let _ = event_tx.send(InternalAudioEvent::Resumed);
+                    }
+                    Ok(AudioCommand::SwitchMic(new_id)) => {
+                        println!("Mock: switching mic from {:?} to {}", current_mic, new_id);
+                        current_mic = Some(new_id.clone());
+                        let _ = event_tx.send(InternalAudioEvent::MicSwitched(new_id));
                     }
                     Err(_) => {
                         // Timeout, continue loop
@@ -447,6 +478,31 @@ enum SessionError {
     Recoverable(String),
 }
 
+/// State for managing mic stream that can be switched
+#[cfg(feature = "real-audio")]
+struct MicStreamState {
+    stream: Option<(pw::stream::Stream, pw::stream::StreamListener<StreamUserData>)>,
+    current_device_id: Option<String>,
+}
+
+#[cfg(feature = "real-audio")]
+fn create_mic_stream(
+    core: &pw::core::Core,
+    mic_id: &str,
+    output_path: PathBuf,
+    encoder: Arc<Mutex<Option<AudioEncoder>>>,
+    levels: Arc<SharedLevels>,
+    is_paused: Arc<Mutex<bool>>,
+) -> Result<(pw::stream::Stream, pw::stream::StreamListener<StreamUserData>), String> {
+    let props = pw::properties::properties! {
+        *pw::keys::MEDIA_TYPE => "Audio",
+        *pw::keys::MEDIA_CATEGORY => "Capture",
+        *pw::keys::MEDIA_ROLE => "Communication",
+        "target.object" => mic_id,
+    };
+    create_stream(core, "quinoa-mic", props, output_path, encoder, levels, true, is_paused)
+}
+
 #[cfg(feature = "real-audio")]
 fn connect_and_run(
     config: &RecordingConfig,
@@ -494,22 +550,30 @@ fn connect_and_run(
     let _ = event_tx.send(InternalAudioEvent::Started);
 
     // --- Microphone Stream ---
+    // Encoder is shared and persists across mic switches
     let mic_encoder: Arc<Mutex<Option<AudioEncoder>>> = Arc::new(Mutex::new(None));
     let mic_encoder_finalize = mic_encoder.clone();
+    let mic_output_path = output_dir.join("microphone.wav");
 
-    let _mic_stream_handle = if let Some(ref mic_id) = config.mic_device_id {
-        let props = pw::properties::properties! {
-            *pw::keys::MEDIA_TYPE => "Audio",
-            *pw::keys::MEDIA_CATEGORY => "Capture",
-            *pw::keys::MEDIA_ROLE => "Communication",
-            "target.object" => mic_id.as_str(),
-        };
-        let path = output_dir.join("microphone.wav");
-        Some(create_stream(&core, "quinoa-mic", props, path, mic_encoder, levels.clone(), true, is_paused.clone())
-            .map_err(|e| SessionError::Recoverable(format!("Failed to create mic stream: {}", e)))?)
-    } else {
-        None
-    };
+    // Track current mic state for switching
+    let mic_state: Arc<Mutex<MicStreamState>> = Arc::new(Mutex::new(MicStreamState {
+        stream: None,
+        current_device_id: config.mic_device_id.clone(),
+    }));
+
+    // Create initial mic stream if configured
+    if let Some(ref mic_id) = config.mic_device_id {
+        match create_mic_stream(&core, mic_id, mic_output_path.clone(), mic_encoder.clone(), levels.clone(), is_paused.clone()) {
+            Ok(stream_handle) => {
+                if let Ok(mut state) = mic_state.lock() {
+                    state.stream = Some(stream_handle);
+                }
+            }
+            Err(e) => {
+                return Err(SessionError::Recoverable(format!("Failed to create mic stream: {}", e)));
+            }
+        }
+    }
 
     // --- System Audio Stream ---
     let sys_encoder: Arc<Mutex<Option<AudioEncoder>>> = Arc::new(Mutex::new(None));
@@ -539,6 +603,10 @@ fn connect_and_run(
     // We need to know if we quit because of a stop command or an error
     let stop_requested = Arc::new(Mutex::new(false));
     let stop_requested_clone = stop_requested.clone();
+    
+    // Channel for mic switch requests (processed in main loop after timer signals)
+    let pending_mic_switch: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
+    let pending_mic_switch_clone = pending_mic_switch.clone();
 
     let timer = mainloop.loop_().add_timer(move |_| {
         // Check commands
@@ -562,6 +630,14 @@ fn connect_and_run(
                             *paused = false;
                         }
                         let _ = event_tx_clone.send(InternalAudioEvent::Resumed);
+                    }
+                    AudioCommand::SwitchMic(new_id) => {
+                        // Queue the switch request - it will be processed after mainloop iteration
+                        if let Ok(mut pending) = pending_mic_switch_clone.lock() {
+                            *pending = Some(new_id);
+                        }
+                        // Quit mainloop so we can handle the switch
+                        loop_clone.quit();
                     }
                 }
             }
@@ -589,7 +665,66 @@ fn connect_and_run(
     let timeout = std::time::Duration::from_millis(100);
     timer.update_timer(Some(timeout), Some(timeout));
 
-    mainloop.run();
+    // Main loop with mic switch handling
+    loop {
+        mainloop.run();
+        
+        // Check if we're stopping
+        if let Ok(stop) = stop_requested.lock() {
+            if *stop {
+                break;
+            }
+        }
+        
+        // Check for pending mic switch
+        let switch_request = if let Ok(mut pending) = pending_mic_switch.lock() {
+            pending.take()
+        } else {
+            None
+        };
+        
+        if let Some(new_mic_id) = switch_request {
+            // Drop old mic stream
+            if let Ok(mut state) = mic_state.lock() {
+                let old_device = state.current_device_id.clone();
+                state.stream = None; // Drop old stream
+                
+                // Create new stream with the same encoder
+                match create_mic_stream(&core, &new_mic_id, mic_output_path.clone(), mic_encoder.clone(), levels.clone(), is_paused.clone()) {
+                    Ok(new_stream) => {
+                        state.stream = Some(new_stream);
+                        state.current_device_id = Some(new_mic_id.clone());
+                        let _ = event_tx.send(InternalAudioEvent::MicSwitched(new_mic_id));
+                    }
+                    Err(e) => {
+                        eprintln!("Failed to switch mic to {}: {}", new_mic_id, e);
+                        // Try to reconnect to old mic
+                        if let Some(ref old_id) = old_device {
+                            match create_mic_stream(&core, old_id, mic_output_path.clone(), mic_encoder.clone(), levels.clone(), is_paused.clone()) {
+                                Ok(old_stream) => {
+                                    state.stream = Some(old_stream);
+                                    // Keep old device ID
+                                }
+                                Err(_) => {
+                                    // Both failed, continue without mic
+                                    state.current_device_id = None;
+                                }
+                            }
+                        }
+                        let _ = event_tx.send(InternalAudioEvent::MicSwitchFailed {
+                            requested: new_mic_id,
+                            fallback: old_device,
+                        });
+                    }
+                }
+            }
+            // Continue the main loop
+            continue;
+        }
+        
+        // If we get here without a switch request or stop, something unexpected happened
+        break;
+    }
 
     // Finalize encoders
     if let Ok(guard) = mic_encoder_finalize.lock() {

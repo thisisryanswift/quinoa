@@ -7,6 +7,9 @@ A meeting recording and transcription app for Linux. Records microphone and syst
 - **Dual-Channel Recording**: Captures your microphone and system audio (meeting participants) as separate tracks
 - **Non-Invasive**: Uses PipeWire monitor ports - works alongside Google Meet, Zoom, etc. without interference
 - **AI Transcription**: Google Gemini 2.5 Flash with speaker diarization, summaries, and action items
+- **Google Calendar Integration**: Meetings-first view with automatic recording-to-meeting linking
+- **Seamless Mic Switching**: Change microphones mid-recording without interruption
+- **Audio Compression**: Automatic WAV→FLAC conversion after transcription (~50% space savings)
 - **Bluetooth Support**: Works with Bluetooth headsets in HFP/HSP mode
 - **Device Hot-Plug**: Automatically detects when audio devices are connected/disconnected
 - **Pause/Resume**: Pause recording during breaks without creating multiple files
@@ -46,22 +49,34 @@ quinoa/
 │   ├── config.py               # Configuration (keyring for API key)
 │   ├── constants.py            # Application constants
 │   ├── logging.py              # Logging configuration
+│   ├── audio/                  # Audio processing utilities
+│   │   ├── converter.py        # WAV→FLAC compression
+│   │   └── compression_worker.py # Background compression
+│   ├── calendar/               # Google Calendar integration
+│   │   ├── auth.py             # OAuth authentication
+│   │   ├── client.py           # Calendar API client
+│   │   └── sync_worker.py      # Background sync
+│   ├── search/                 # Gemini File Search
+│   │   ├── file_search.py      # File Search manager
+│   │   └── sync_worker.py      # Background sync
 │   ├── storage/database.py     # SQLite operations
 │   ├── transcription/
 │   │   ├── gemini.py           # Gemini API client
 │   │   └── processor.py        # Audio mixing for transcription
 │   └── ui/
 │       ├── main_window.py      # Main GUI
+│       ├── calendar_panel.py   # Left panel (meetings list)
+│       ├── middle_panel.py     # Notes/transcript viewer
+│       ├── right_panel.py      # AI chat assistant
 │       ├── settings_dialog.py  # Settings
 │       ├── styles.py           # UI stylesheets
-│       ├── transcribe_worker.py # Background transcription
-│       └── transcript_handler.py # Transcript parsing utilities
+│       └── ...
 │
 ├── quinoa_audio/              # Rust audio library
 │   └── src/
 │       ├── lib.rs              # PyO3 bindings
 │       ├── capture/
-│       │   ├── session.rs      # Recording session management
+│       │   ├── session.rs      # Recording session (with mic switching)
 │       │   └── encoder.rs      # WAV encoding
 │       └── device/
 │           ├── enumerate.rs    # Device discovery
@@ -165,10 +180,12 @@ mypy quinoa/
 Each recording session creates:
 ```
 ~/Music/Quinoa/rec_20241115_143022/
-├── microphone.wav      # Your voice
-├── system.wav          # Meeting participants
-└── mixed_stereo.wav    # Combined (for transcription)
+├── microphone.wav      # Your voice (converted to .flac after transcription)
+├── system.wav          # Meeting participants (converted to .flac after transcription)
+└── mixed_stereo.wav    # Combined for transcription (converted to .flac after transcription)
 ```
+
+After transcription, WAV files are automatically compressed to FLAC (~50% space savings). Original WAV files are kept as backup.
 
 ## Troubleshooting
 

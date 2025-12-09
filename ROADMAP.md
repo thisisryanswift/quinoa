@@ -2,6 +2,31 @@
 
 ## Recently Completed
 
+### Session: 2025-12-08
+
+**Features Added:**
+- Seamless mic switching during recording (Rust + Python integration)
+- Audio compression: WAV→FLAC after transcription (~50% space savings)
+- Background compression worker for existing recordings
+
+**Code Quality:**
+- Database connection pooling (thread-local connections)
+- Extracted icon constants to `constants.py`
+- Removed OAuth secrets from documentation
+
+### Session: 2025-12-07
+
+**P1 Fixes (Calendar Integration):**
+- Fixed `sync_now()` UI freeze with QMutex/QWaitCondition
+- Moved OAuth credentials to `secrets.json` + env vars
+- Fixed brittle timezone handling (preserve TZ, convert at display)
+- Removed dead code (`list_calendars()`, `_add_unlinked_recordings_for_date()`)
+
+**P2 Fixes:**
+- Database connection pooling
+- Reduced nesting in meeting selection dialog
+- Extracted magic strings to constants
+
 ### Session: 2025-12-04
 
 **Bugs Fixed:**
@@ -41,18 +66,6 @@ Users sometimes forget to stop recordings. Currently requires manual ffmpeg trim
 
 ### Medium Priority
 
-#### Storage Optimization
-Current format: Uncompressed WAV at 48kHz stereo
-- ~16.8 MB/minute
-- ~1 GB/hour
-- ~1 TB/year at 20 hours/week
-
-**Proposed solutions:**
-- Switch to Opus codec (~15 MB/hour, 98% reduction)
-- Or FLAC for lossless (~50% reduction)
-- Consider 16kHz sample rate (sufficient for speech)
-- Option to compress after transcription completes
-
 #### File Search Duplicate Prevention
 Re-transcribing a meeting uploads a new file to Gemini File Search without removing the old one, causing duplicates.
 
@@ -80,6 +93,17 @@ Detect extended silence and prompt user to stop recording, or auto-stop after co
 ---
 
 ## Completed Milestones
+
+### V6 - Audio Improvements (Dec 2025)
+- Seamless mic switching during recording
+- WAV→FLAC compression after transcription
+- Background compression worker
+
+### V5 - Google Calendar Integration (Dec 2025)
+- OAuth authentication with secure credential storage
+- Meetings-first calendar view
+- Automatic recording-to-meeting linking
+- Background calendar sync
 
 ### V4 - WYSIWYG & Views (Dec 2025)
 - Rich text markdown editor for notes

@@ -1,23 +1,60 @@
 import os
 import sqlite3
+import threading
+from collections.abc import Generator
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 
 class Database:
+    """SQLite database with connection pooling.
+
+    Uses a single persistent connection per thread for better performance.
+    The connection is created lazily on first use.
+    """
+
     def __init__(self, db_path: str | Path | None = None) -> None:
         if not db_path:
-            # Default to ~/.local/share/quinoa/quinoa.db
             data_dir = os.path.expanduser("~/.local/share/quinoa")
             os.makedirs(data_dir, exist_ok=True)
             db_path = os.path.join(data_dir, "quinoa.db")
 
-        self.db_path = db_path
+        self.db_path = str(db_path)
+        self._local = threading.local()
         self._init_db()
 
+    def _get_connection(self) -> sqlite3.Connection:
+        """Get or create a connection for the current thread."""
+        if not hasattr(self._local, "conn") or self._local.conn is None:
+            self._local.conn = sqlite3.connect(
+                self.db_path,
+                check_same_thread=False,
+                timeout=30.0,
+            )
+            self._local.conn.row_factory = sqlite3.Row
+        return self._local.conn
+
+    @contextmanager
+    def _conn(self) -> Generator[sqlite3.Connection, None, None]:
+        """Context manager for database operations with auto-commit."""
+        conn = self._get_connection()
+        try:
+            yield conn
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+
+    def close(self) -> None:
+        """Close the connection for the current thread."""
+        if hasattr(self._local, "conn") and self._local.conn is not None:
+            self._local.conn.close()
+            self._local.conn = None
+
     def _init_db(self) -> None:
-        with sqlite3.connect(self.db_path) as conn:
+        with self._conn() as conn:
             # Create table with full schema
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS recordings (
@@ -108,6 +145,32 @@ class Database:
                 )
             """)
 
+            # Calendar events for meetings-first integration
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS calendar_events (
+                    event_id TEXT PRIMARY KEY,
+                    calendar_id TEXT DEFAULT 'primary',
+                    title TEXT NOT NULL,
+                    start_time TIMESTAMP NOT NULL,
+                    end_time TIMESTAMP NOT NULL,
+                    meet_link TEXT,
+                    attendees TEXT,
+                    organizer_email TEXT,
+                    etag TEXT,
+                    synced_at TIMESTAMP,
+                    recording_id TEXT,
+                    FOREIGN KEY(recording_id) REFERENCES recordings(id)
+                )
+            """)
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_calendar_events_start
+                ON calendar_events(start_time)
+            """)
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_calendar_events_recording
+                ON calendar_events(recording_id)
+            """)
+
     def add_recording(
         self,
         rec_id: str,
@@ -119,7 +182,7 @@ class Database:
         mic_device_name: str | None = None,
         directory_path: str | Path | None = None,
     ) -> None:
-        with sqlite3.connect(self.db_path) as conn:
+        with self._conn() as conn:
             conn.execute(
                 "INSERT INTO recordings (id, title, started_at, mic_path, sys_path, status, mic_device_id, mic_device_name, directory_path) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
@@ -143,7 +206,7 @@ class Database:
         stereo_path: str | Path | None = None,
         ended_at: datetime | None = None,
     ) -> None:
-        with sqlite3.connect(self.db_path) as conn:
+        with self._conn() as conn:
             updates = ["status = ?"]
             params: list[Any] = [status]
 
@@ -165,7 +228,7 @@ class Database:
             conn.execute(query, params)
 
     def update_recording_title(self, rec_id: str, title: str) -> None:
-        with sqlite3.connect(self.db_path) as conn:
+        with self._conn() as conn:
             conn.execute(
                 "UPDATE recordings SET title = ? WHERE id = ?",
                 (title, rec_id),
@@ -179,7 +242,7 @@ class Database:
         utterances: str | None = None,
     ) -> None:
         """Save transcript with optional utterances JSON."""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._conn() as conn:
             conn.execute(
                 """INSERT OR REPLACE INTO transcripts
                    (recording_id, text, summary, utterances, created_at)
@@ -188,20 +251,32 @@ class Database:
             )
 
     def get_recordings(self) -> list[dict[str, Any]]:
-        with sqlite3.connect(self.db_path) as conn:
+        with self._conn() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute("SELECT * FROM recordings ORDER BY started_at DESC")
             return [dict(row) for row in cursor.fetchall()]
 
+    def get_recordings_in_range(self, start: datetime, end: datetime) -> list[dict[str, Any]]:
+        """Get recordings within a date range (inclusive)."""
+        with self._conn() as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute(
+                """SELECT * FROM recordings
+                   WHERE started_at >= ? AND started_at <= ?
+                   ORDER BY started_at DESC""",
+                (start.isoformat(), end.isoformat()),
+            )
+            return [dict(row) for row in cursor.fetchall()]
+
     def get_recording(self, rec_id: str) -> dict[str, Any] | None:
-        with sqlite3.connect(self.db_path) as conn:
+        with self._conn() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute("SELECT * FROM recordings WHERE id = ?", (rec_id,))
             row = cursor.fetchone()
             return dict(row) if row else None
 
     def get_transcript(self, rec_id: str) -> dict[str, Any] | None:
-        with sqlite3.connect(self.db_path) as conn:
+        with self._conn() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute("SELECT * FROM transcripts WHERE recording_id = ?", (rec_id,))
             row = cursor.fetchone()
@@ -209,7 +284,7 @@ class Database:
 
     def save_speaker_names(self, rec_id: str, speaker_names: str) -> None:
         """Save speaker name mappings as JSON."""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._conn() as conn:
             conn.execute(
                 "UPDATE transcripts SET speaker_names = ? WHERE recording_id = ?",
                 (speaker_names, rec_id),
@@ -217,7 +292,7 @@ class Database:
 
     def get_speaker_names(self, rec_id: str) -> str | None:
         """Get speaker name mappings JSON."""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._conn() as conn:
             cursor = conn.execute(
                 "SELECT speaker_names FROM transcripts WHERE recording_id = ?", (rec_id,)
             )
@@ -226,14 +301,14 @@ class Database:
 
     def update_utterances(self, rec_id: str, utterances: str) -> None:
         """Update utterances JSON (for reassigning speakers)."""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._conn() as conn:
             conn.execute(
                 "UPDATE transcripts SET utterances = ? WHERE recording_id = ?",
                 (utterances, rec_id),
             )
 
     def save_action_items(self, rec_id: str, items: list[dict[str, Any]]) -> None:
-        with sqlite3.connect(self.db_path) as conn:
+        with self._conn() as conn:
             conn.execute("DELETE FROM action_items WHERE recording_id = ?", (rec_id,))
             for item in items:
                 conn.execute(
@@ -242,14 +317,14 @@ class Database:
                 )
 
     def get_action_items(self, rec_id: str) -> list[dict[str, Any]]:
-        with sqlite3.connect(self.db_path) as conn:
+        with self._conn() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute("SELECT * FROM action_items WHERE recording_id = ?", (rec_id,))
             return [dict(row) for row in cursor.fetchall()]
 
     def save_notes(self, rec_id: str, notes: str) -> None:
         """Save notes for a recording."""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._conn() as conn:
             conn.execute(
                 "UPDATE recordings SET notes = ? WHERE id = ?",
                 (notes, rec_id),
@@ -257,14 +332,14 @@ class Database:
 
     def get_notes(self, rec_id: str) -> str:
         """Get notes for a recording."""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._conn() as conn:
             cursor = conn.execute("SELECT notes FROM recordings WHERE id = ?", (rec_id,))
             row = cursor.fetchone()
             return row[0] if row and row[0] else ""
 
     def save_enhanced_notes(self, rec_id: str, enhanced_notes: str) -> None:
         """Save AI-enhanced notes for a recording."""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._conn() as conn:
             conn.execute(
                 "UPDATE recordings SET enhanced_notes = ? WHERE id = ?",
                 (enhanced_notes, rec_id),
@@ -272,14 +347,14 @@ class Database:
 
     def get_enhanced_notes(self, rec_id: str) -> str:
         """Get AI-enhanced notes for a recording."""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._conn() as conn:
             cursor = conn.execute("SELECT enhanced_notes FROM recordings WHERE id = ?", (rec_id,))
             row = cursor.fetchone()
             return row[0] if row and row[0] else ""
 
     def delete_recording(self, rec_id: str) -> None:
         """Delete a recording and all related data."""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._conn() as conn:
             conn.execute("DELETE FROM action_items WHERE recording_id = ?", (rec_id,))
             conn.execute("DELETE FROM transcripts WHERE recording_id = ?", (rec_id,))
             conn.execute("DELETE FROM file_search_sync WHERE recording_id = ?", (rec_id,))
@@ -289,7 +364,7 @@ class Database:
 
     def get_sync_status(self, rec_id: str) -> dict[str, Any] | None:
         """Get sync status for a recording."""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._conn() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute(
                 "SELECT * FROM file_search_sync WHERE recording_id = ?", (rec_id,)
@@ -306,7 +381,7 @@ class Database:
         error: str | None = None,
     ) -> None:
         """Update sync status for a recording."""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._conn() as conn:
             conn.execute(
                 """
                 INSERT INTO file_search_sync
@@ -332,7 +407,7 @@ class Database:
 
     def get_unsynced_recordings(self, min_duration_seconds: float = 30) -> list[dict[str, Any]]:
         """Get recordings that need syncing (have transcripts, long enough, not synced)."""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._conn() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute(
                 """
@@ -350,14 +425,14 @@ class Database:
 
     def get_synced_recordings(self) -> list[dict[str, Any]]:
         """Get all synced recording IDs and file names."""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._conn() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute("SELECT * FROM file_search_sync WHERE sync_status = 'synced'")
             return [dict(row) for row in cursor.fetchall()]
 
     def mark_for_deletion(self, rec_id: str) -> None:
         """Mark a sync record for deletion from cloud."""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._conn() as conn:
             conn.execute(
                 "UPDATE file_search_sync SET sync_status = 'deleted' WHERE recording_id = ?",
                 (rec_id,),
@@ -365,7 +440,7 @@ class Database:
 
     def get_pending_deletions(self) -> list[dict[str, Any]]:
         """Get recordings marked for deletion from cloud."""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._conn() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute("SELECT * FROM file_search_sync WHERE sync_status = 'deleted'")
             return [dict(row) for row in cursor.fetchall()]
@@ -380,7 +455,7 @@ class Database:
         citations: str | None = None,
     ) -> None:
         """Save a chat message."""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._conn() as conn:
             conn.execute(
                 """
                 INSERT INTO chat_history (session_id, role, content, citations)
@@ -391,7 +466,7 @@ class Database:
 
     def get_chat_history(self, session_id: str, limit: int = 50) -> list[dict[str, Any]]:
         """Get chat history for a session."""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._conn() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute(
                 """
@@ -406,5 +481,129 @@ class Database:
 
     def clear_chat_history(self, session_id: str) -> None:
         """Clear chat history for a session."""
-        with sqlite3.connect(self.db_path) as conn:
+        with self._conn() as conn:
             conn.execute("DELETE FROM chat_history WHERE session_id = ?", (session_id,))
+
+    # ==================== Calendar Events Methods ====================
+
+    def upsert_calendar_events(self, events: list[dict[str, Any]]) -> int:
+        """Insert or update calendar events. Returns number of rows changed."""
+        total_changes = 0
+        with self._conn() as conn:
+            for event in events:
+                conn.execute(
+                    """
+                    INSERT INTO calendar_events
+                        (event_id, calendar_id, title, start_time, end_time,
+                         meet_link, attendees, organizer_email, etag, synced_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(event_id) DO UPDATE SET
+                        calendar_id = excluded.calendar_id,
+                        title = excluded.title,
+                        start_time = excluded.start_time,
+                        end_time = excluded.end_time,
+                        meet_link = excluded.meet_link,
+                        attendees = excluded.attendees,
+                        organizer_email = excluded.organizer_email,
+                        etag = excluded.etag,
+                        synced_at = excluded.synced_at
+                    """,
+                    (
+                        event["event_id"],
+                        event.get("calendar_id", "primary"),
+                        event["title"],
+                        event["start_time"],
+                        event["end_time"],
+                        event.get("meet_link"),
+                        event.get("attendees"),  # JSON string
+                        event.get("organizer_email"),
+                        event.get("etag"),
+                        datetime.now(),
+                    ),
+                )
+                total_changes += conn.total_changes
+        return total_changes
+
+    def get_calendar_events(self, start_date: datetime, end_date: datetime) -> list[dict[str, Any]]:
+        """Get calendar events in a date range with recording info."""
+        with self._conn() as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute(
+                """
+                SELECT
+                    ce.*,
+                    r.id as rec_id,
+                    r.title as rec_title,
+                    r.duration_seconds as rec_duration,
+                    r.status as rec_status
+                FROM calendar_events ce
+                LEFT JOIN recordings r ON ce.recording_id = r.id
+                WHERE ce.start_time >= ? AND ce.start_time < ?
+                ORDER BY ce.start_time ASC
+                """,
+                (start_date, end_date),
+            )
+            return [dict(row) for row in cursor.fetchall()]
+
+    def get_todays_calendar_events(self) -> list[dict[str, Any]]:
+        """Get today's calendar events with recording info."""
+        today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        today_end = today_start.replace(hour=23, minute=59, second=59)
+        return self.get_calendar_events(today_start, today_end)
+
+    def get_current_meeting(self, buffer_minutes: int = 10) -> dict[str, Any] | None:
+        """Find a meeting happening now (within buffer window)."""
+        from datetime import timedelta
+
+        now = datetime.now()
+        window_start = now - timedelta(minutes=buffer_minutes)
+        window_end = now + timedelta(minutes=buffer_minutes)
+
+        with self._conn() as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute(
+                """
+                SELECT * FROM calendar_events
+                WHERE start_time <= ? AND end_time >= ?
+                   OR (start_time >= ? AND start_time <= ?)
+                ORDER BY start_time ASC
+                LIMIT 1
+                """,
+                (now, now, window_start, window_end),
+            )
+            row = cursor.fetchone()
+            return dict(row) if row else None
+
+    def link_recording_to_event(self, event_id: str, recording_id: str) -> None:
+        """Link a recording to a calendar event."""
+        with self._conn() as conn:
+            conn.execute(
+                "UPDATE calendar_events SET recording_id = ? WHERE event_id = ?",
+                (recording_id, event_id),
+            )
+
+    def get_calendar_event(self, event_id: str) -> dict[str, Any] | None:
+        """Get a single calendar event by ID."""
+        with self._conn() as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute(
+                """
+                SELECT
+                    ce.*,
+                    r.id as rec_id,
+                    r.title as rec_title,
+                    r.duration_seconds as rec_duration,
+                    r.status as rec_status
+                FROM calendar_events ce
+                LEFT JOIN recordings r ON ce.recording_id = r.id
+                WHERE ce.event_id = ?
+                """,
+                (event_id,),
+            )
+            row = cursor.fetchone()
+            return dict(row) if row else None
+
+    def clear_calendar_events(self) -> None:
+        """Clear all calendar events (for re-sync or logout)."""
+        with self._conn() as conn:
+            conn.execute("DELETE FROM calendar_events")

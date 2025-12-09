@@ -52,3 +52,12 @@ class ViewType(IntEnum):
     NOTES = 0
     TRANSCRIPT = 1
     ENHANCED = 2
+
+
+# Unicode icons for UI
+ICON_CHECKMARK = "\u2713"  # ✓
+ICON_PLAY = "\u25b6"  # ▶
+ICON_CIRCLE_EMPTY = "\u25cb"  # ○
+ICON_BULLET = "\u2022"  # •
+ICON_CALENDAR = "\U0001f4c5"  # 📅
+ICON_STOPWATCH = "\u23f1"  # ⏱

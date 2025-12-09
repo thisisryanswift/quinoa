@@ -1,4 +1,5 @@
 import argparse
+import signal
 import sys
 
 from PyQt6.QtCore import QTimer
@@ -19,8 +20,14 @@ def main():
     setup_logging(verbose=args.verbose)
 
     app = QApplication(sys.argv)
+
+    # Allow Ctrl+C to work in terminal during development
+    # TODO: Remove this before release - it bypasses graceful shutdown
+    # (recordings in progress won't be saved properly if killed with Ctrl+C)
+    signal.signal(signal.SIGINT, signal.SIG_DFL)
+
     window = MainWindow()
-    window.show()
+    window.showMaximized()
 
     if args.test:
         logger.info("Running in test mode...")

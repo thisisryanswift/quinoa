@@ -42,14 +42,19 @@ cargo check --features real-audio
 | UI styles | `quinoa/ui/styles.py` |
 | Database ops | `quinoa/storage/database.py` |
 | Transcription | `quinoa/transcription/` |
+| Audio processing | `quinoa/audio/` |
+| Calendar integration | `quinoa/calendar/` |
+| File Search | `quinoa/search/` |
 | UI components | `quinoa/ui/` |
 
 ## Key Files to Understand
 
-1. **`quinoa/ui/main_window.py`** (~805 lines) - Main application window, recording controls, history tab
-2. **`quinoa/storage/database.py`** - SQLite operations for recordings, transcripts, action items
-3. **`quinoa/config.py`** - Configuration with keyring integration for API key storage
-4. **`quinoa_audio/src/capture/session.rs`** - Rust recording session with PipeWire integration
+1. **`quinoa/ui/main_window.py`** - Main application window, worker initialization
+2. **`quinoa/ui/middle_panel.py`** - Recording controls, notes/transcript viewer
+3. **`quinoa/ui/calendar_panel.py`** - Left panel with meetings list
+4. **`quinoa/storage/database.py`** - SQLite operations (thread-local connection pooling)
+5. **`quinoa/config.py`** - Configuration with keyring integration for API key storage
+6. **`quinoa_audio/src/capture/session.rs`** - Rust recording session with PipeWire integration, mic switching
 
 ## Common Tasks
 
@@ -95,6 +100,7 @@ pytest tests/python/
 - [ ] Recording starts/stops correctly
 - [ ] Pause/resume works
 - [ ] Device hot-plug detected
+- [ ] Mic switching during recording works
 - [ ] Transcription completes
 - [ ] History tab shows recordings
 

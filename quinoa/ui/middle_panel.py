@@ -14,10 +14,13 @@ from PyQt6.QtWidgets import (
     QButtonGroup,
     QCheckBox,
     QComboBox,
+    QDialog,
     QFrame,
     QHBoxLayout,
     QInputDialog,
     QLabel,
+    QListWidget,
+    QListWidgetItem,
     QMenu,
     QMessageBox,
     QProgressBar,
@@ -28,9 +31,12 @@ from PyQt6.QtWidgets import (
 )
 
 import quinoa_audio
+from quinoa.audio.converter import compress_recording_audio
 from quinoa.config import config
 from quinoa.constants import (
     DEFAULT_SAMPLE_RATE,
+    ICON_CALENDAR,
+    ICON_STOPWATCH,
     LAYOUT_MARGIN,
     LAYOUT_MARGIN_SMALL,
     LAYOUT_SPACING,
@@ -41,6 +47,7 @@ from quinoa.constants import (
     ViewType,
 )
 from quinoa.storage.database import Database
+from quinoa.ui.calendar_panel import get_meeting_platform
 from quinoa.ui.enhance_worker import EnhanceWorker
 from quinoa.ui.rich_text_editor import RichTextEditor
 from quinoa.ui.styles import (
@@ -65,6 +72,139 @@ from quinoa.ui.transcript_handler import (
 from quinoa.ui.transcript_view import TranscriptView
 
 logger = logging.getLogger("quinoa")
+
+
+class MeetingSelectionDialog(QDialog):
+    """Dialog for selecting which meeting to link a recording to."""
+
+    RESULT_CONFIRMED = 1  # Use selected meeting
+    RESULT_DIFFERENT = 2  # Show picker for different meeting
+    RESULT_IMPROMPTU = 3  # Start as impromptu (no link)
+
+    def __init__(
+        self,
+        current_meeting: dict | None = None,
+        todays_meetings: list[dict] | None = None,
+        parent: QWidget | None = None,
+    ):
+        super().__init__(parent)
+        self.setWindowTitle("Start Recording")
+        self.setMinimumWidth(400)
+
+        self.current_meeting = current_meeting
+        self.todays_meetings = todays_meetings or []
+        self.selected_event_id: str | None = None
+        self.result_type = self.RESULT_IMPROMPTU
+
+        self._setup_ui()
+
+    def _setup_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setSpacing(16)
+
+        if self.current_meeting:
+            # Show current meeting prompt
+            title = self.current_meeting.get("title", "Untitled Meeting")
+            self.selected_event_id = self.current_meeting.get("event_id")
+
+            prompt = QLabel("<b>Record this meeting?</b>")
+            prompt.setStyleSheet("font-size: 14px;")
+            layout.addWidget(prompt)
+
+            meeting_label = QLabel(f'<span style="font-size: 16px;">{title}</span>')
+            meeting_label.setWordWrap(True)
+            layout.addWidget(meeting_label)
+
+            # Buttons
+            btn_layout = QVBoxLayout()
+            btn_layout.setSpacing(8)
+
+            yes_btn = QPushButton(f'Yes, record "{title[:30]}{"..." if len(title) > 30 else ""}"')
+            yes_btn.setMinimumHeight(36)
+            yes_btn.clicked.connect(self._on_confirmed)
+            btn_layout.addWidget(yes_btn)
+
+            diff_btn = QPushButton("Different meeting...")
+            diff_btn.setMinimumHeight(36)
+            diff_btn.clicked.connect(self._on_different)
+            btn_layout.addWidget(diff_btn)
+
+            impromptu_btn = QPushButton("Impromptu (no meeting)")
+            impromptu_btn.setMinimumHeight(36)
+            impromptu_btn.clicked.connect(self._on_impromptu)
+            btn_layout.addWidget(impromptu_btn)
+
+            layout.addLayout(btn_layout)
+
+        else:
+            # Show meeting picker if no current meeting
+            prompt = QLabel("<b>Which meeting are you recording?</b>")
+            prompt.setStyleSheet("font-size: 14px;")
+            layout.addWidget(prompt)
+
+            if self.todays_meetings:
+                self.meeting_list = QListWidget()
+                for meeting in self.todays_meetings:
+                    title = meeting.get("title", "Untitled")
+                    try:
+                        start_dt = datetime.fromisoformat(meeting["start_time"])
+                        time_str = start_dt.strftime("%I:%M %p").lstrip("0")
+                    except (ValueError, TypeError, KeyError):
+                        time_str = ""
+                    item = QListWidgetItem(f"{title}\n{time_str}")
+                    item.setData(Qt.ItemDataRole.UserRole, meeting.get("event_id"))
+                    self.meeting_list.addItem(item)
+                self.meeting_list.itemDoubleClicked.connect(self._on_list_confirmed)
+                layout.addWidget(self.meeting_list)
+
+                select_btn = QPushButton("Record selected meeting")
+                select_btn.setMinimumHeight(36)
+                select_btn.clicked.connect(self._on_list_selected)
+                layout.addWidget(select_btn)
+            else:
+                no_meetings = QLabel("No meetings found for today.")
+                no_meetings.setStyleSheet("color: #888;")
+                layout.addWidget(no_meetings)
+
+            impromptu_btn = QPushButton("Impromptu (no meeting)")
+            impromptu_btn.setMinimumHeight(36)
+            impromptu_btn.clicked.connect(self._on_impromptu)
+            layout.addWidget(impromptu_btn)
+
+        # Cancel button
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.clicked.connect(self.reject)
+        layout.addWidget(cancel_btn)
+
+    def _on_confirmed(self):
+        """User confirmed the current meeting."""
+        self.result_type = self.RESULT_CONFIRMED
+        self.accept()
+
+    def _on_different(self):
+        """User wants to pick a different meeting."""
+        self.result_type = self.RESULT_DIFFERENT
+        self.accept()
+
+    def _on_impromptu(self):
+        """User wants to start without linking to a meeting."""
+        self.result_type = self.RESULT_IMPROMPTU
+        self.selected_event_id = None
+        self.accept()
+
+    def _on_list_selected(self):
+        """User selected a meeting from the list."""
+        current = self.meeting_list.currentItem()
+        if current:
+            self.selected_event_id = current.data(Qt.ItemDataRole.UserRole)
+            self.result_type = self.RESULT_CONFIRMED
+            self.accept()
+
+    def _on_list_confirmed(self, item: QListWidgetItem):
+        """User double-clicked a meeting in the list."""
+        self.selected_event_id = item.data(Qt.ItemDataRole.UserRole)
+        self.result_type = self.RESULT_CONFIRMED
+        self.accept()
 
 
 class MiddlePanel(QWidget):
@@ -97,6 +237,7 @@ class MiddlePanel(QWidget):
         self.devices: list = []
         self.device_monitor = None
         self._mode = PanelMode.IDLE
+        self._current_mic_id: str | None = None  # Track current mic for mid-recording switches
 
         # Viewing state
         self._viewing_rec_id: str | None = None
@@ -607,6 +748,7 @@ class MiddlePanel(QWidget):
         dev_row.addWidget(QLabel("Mic:"))
         self.mic_combo = QComboBox()
         self.mic_combo.setMinimumWidth(150)
+        self.mic_combo.currentIndexChanged.connect(self._on_mic_combo_changed)
         dev_row.addWidget(self.mic_combo, stretch=1)
 
         self.sys_audio_check = QCheckBox("System Audio")
@@ -709,6 +851,109 @@ class MiddlePanel(QWidget):
         except Exception as e:
             logger.error("Failed to list devices: %s", e)
             self.record_btn.setEnabled(False)
+
+    def load_calendar_event(self, event_id: str):
+        """Load an unrecorded calendar event for display."""
+        if self.recording_session:
+            # Don't switch while recording
+            return
+
+        event = self.db.get_calendar_event(event_id)
+        if not event:
+            return
+
+        # Clear previous state
+        self._viewing_rec_id = None
+        self._mode = PanelMode.VIEWING
+        self._cached_notes = ""
+        self._cached_transcript = ""
+        self._cached_enhanced = ""
+        self._cached_utterances = []
+        self._cached_speaker_names = {}
+
+        # Show meeting info in header
+        self.header_title.setText(event["title"])
+
+        # Date chip
+        start_dt: datetime | None = None
+        end_dt: datetime | None = None
+        try:
+            start_dt = datetime.fromisoformat(event["start_time"])
+            end_dt = datetime.fromisoformat(event["end_time"])
+            date_str = start_dt.strftime("%b %d, %Y \u2022 %I:%M %p")
+        except (ValueError, TypeError):
+            date_str = str(event["start_time"])
+        self.header_date_chip.setText(f"{ICON_CALENDAR} {date_str}")
+
+        # Duration chip - show meeting length
+        if start_dt and end_dt:
+            duration_mins = int((end_dt - start_dt).total_seconds() // 60)
+            self.header_duration_chip.setText(f"{ICON_STOPWATCH} {duration_mins} min scheduled")
+            self.header_duration_chip.setVisible(True)
+        else:
+            self.header_duration_chip.setVisible(False)
+
+        attendees_json = event.get("attendees")
+        attendee_names = []
+        if attendees_json:
+            try:
+                attendees = json.loads(attendees_json)
+                attendee_names = [a.get("name", a.get("email", "")) for a in attendees if a]
+            except json.JSONDecodeError:
+                pass
+
+        # Show meeting header
+        self.meeting_header.setVisible(True)
+        self.speakers_label.setVisible(False)
+        self.speaker_chips_container.setVisible(False)
+
+        meet_link = event.get("meet_link", "")
+        platform = get_meeting_platform(meet_link, full_name=True)
+
+        # Check if meeting is upcoming or in progress (convert to local naive for comparison)
+        now = datetime.now()
+        start_dt_local: datetime | None = None
+        end_dt_local: datetime | None = None
+        if start_dt:
+            start_dt_local = (
+                start_dt.astimezone().replace(tzinfo=None) if start_dt.tzinfo else start_dt
+            )
+        if end_dt:
+            end_dt_local = end_dt.astimezone().replace(tzinfo=None) if end_dt.tzinfo else end_dt
+
+        is_future = start_dt_local > now if start_dt_local else False
+        is_in_progress = (
+            (start_dt_local <= now <= end_dt_local) if (start_dt_local and end_dt_local) else False
+        )
+
+        # Show recording controls for upcoming/in-progress meetings
+        if is_future or is_in_progress:
+            self.recording_controls_container.setVisible(True)
+            self.view_selector_widget.setVisible(False)
+            if is_in_progress:
+                content = "## Meeting in progress\n\n"
+                content += "*Click the record button to start recording this meeting.*\n\n"
+            else:
+                content = "## Upcoming meeting\n\n"
+                content += "*Click the record button when the meeting starts.*\n\n"
+        else:
+            self.recording_controls_container.setVisible(False)
+            self.view_selector_widget.setVisible(False)
+            content = "## This meeting wasn't recorded\n\n"
+
+        if platform:
+            content += f"**Platform:** {platform}\n\n"
+        if attendee_names:
+            content += f"**Attendees:** {', '.join(attendee_names[:10])}"
+            if len(attendee_names) > 10:
+                content += f" (+{len(attendee_names) - 10} more)"
+            content += "\n"
+
+        self.transcript_viewer.set_markdown(content)
+        self.content_stack.setCurrentIndex(1)  # Plain text viewer
+
+        # Disable transcribe button (no recording to transcribe)
+        self.transcribe_btn.setEnabled(False)
 
     def load_meeting(self, rec_id: str):
         """Load a meeting for viewing."""
@@ -842,6 +1087,48 @@ class MiddlePanel(QWidget):
             logger.warning("Failed to check disk space: %s", e)
         return True
 
+    def _prompt_meeting_selection(self) -> tuple[str | None, str | None] | None:
+        """Prompt user to select a meeting to link recording to.
+
+        Returns:
+            (event_id, title) tuple if a meeting was selected or impromptu chosen,
+            None if user cancelled the dialog.
+        """
+        current_meeting = self.db.get_current_meeting()
+        if not current_meeting:
+            return (None, None)
+
+        dialog = MeetingSelectionDialog(
+            current_meeting=current_meeting,
+            todays_meetings=self.db.get_todays_calendar_events(),
+            parent=self,
+        )
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return None
+
+        if dialog.result_type == MeetingSelectionDialog.RESULT_IMPROMPTU:
+            return (None, None)
+
+        if dialog.result_type == MeetingSelectionDialog.RESULT_DIFFERENT:
+            dialog = MeetingSelectionDialog(
+                current_meeting=None,
+                todays_meetings=self.db.get_todays_calendar_events(),
+                parent=self,
+            )
+            if dialog.exec() != QDialog.DialogCode.Accepted:
+                return None
+            if dialog.result_type != MeetingSelectionDialog.RESULT_CONFIRMED:
+                return (None, None)
+
+        # RESULT_CONFIRMED - get event details
+        event_id = dialog.selected_event_id
+        if not event_id:
+            return (None, None)
+
+        event = self.db.get_calendar_event(event_id)
+        title = event.get("title") if event else None
+        return (event_id, title)
+
     def _start_recording(self):
         """Start a new recording session."""
         mic_id = self.mic_combo.currentData()
@@ -866,6 +1153,12 @@ class MiddlePanel(QWidget):
 
         if not self._check_disk_space():
             return
+
+        # Check for current meeting to link to
+        result = self._prompt_meeting_selection()
+        if result is None:
+            return  # User cancelled
+        linked_event_id, meeting_title = result
 
         try:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -892,11 +1185,14 @@ class MiddlePanel(QWidget):
             self.is_paused = False
             self._mode = PanelMode.RECORDING
 
+            # Use meeting title if linked, otherwise default
+            rec_title = meeting_title if meeting_title else f"Recording {timestamp}"
+
             # Add to DB
             mic_name = self.mic_combo.currentText()
             self.db.add_recording(
                 self.current_rec_id,
-                f"Recording {timestamp}",
+                rec_title,
                 datetime.now(),
                 os.path.join(self.current_session_dir, "microphone.wav"),
                 os.path.join(self.current_session_dir, "system.wav"),
@@ -905,6 +1201,11 @@ class MiddlePanel(QWidget):
                 directory_path=self.current_session_dir,
             )
 
+            # Link to calendar event if selected
+            if linked_event_id:
+                self.db.link_recording_to_event(linked_event_id, self.current_rec_id)
+                logger.info("Recording linked to calendar event: %s", linked_event_id)
+
             # Clear notes for new recording
             self._set_notes_text("")
             self.content_stack.setCurrentIndex(0)  # Show notes editor
@@ -912,11 +1213,12 @@ class MiddlePanel(QWidget):
             # Update UI
             self.record_btn.setText("Stop Recording")
             self.record_btn.setStyleSheet(BUTTON_STOP)
-            self.mic_combo.setEnabled(False)
+            # Keep mic_combo enabled to allow mid-recording mic switching
             self.sys_audio_check.setEnabled(False)
             self.transcribe_btn.setEnabled(False)
             self.pause_btn.setEnabled(True)
             self.status_label.setText("Recording...")
+            self._current_mic_id = mic_id  # Track current mic for switch detection
 
             # Start timers
             self.timer.start(TIMER_INTERVAL_MS)
@@ -1104,6 +1406,20 @@ class MiddlePanel(QWidget):
                 elif event.type_ == "started":
                     self.status_label.setText("Recording...")
                     self.status_label.setStyleSheet(STATUS_LABEL)
+                elif event.type_ == "mic_switched":
+                    new_id = event.device_id
+                    self._current_mic_id = new_id
+                    logger.info("Mic switched to: %s", new_id)
+                elif event.type_ == "mic_switch_failed":
+                    logger.warning("Mic switch failed: %s", event.message)
+                    # Revert combo to current mic
+                    if self._current_mic_id:
+                        for i in range(self.mic_combo.count()):
+                            if self.mic_combo.itemData(i) == self._current_mic_id:
+                                self.mic_combo.blockSignals(True)
+                                self.mic_combo.setCurrentIndex(i)
+                                self.mic_combo.blockSignals(False)
+                                break
         except Exception as e:
             logger.error("Error polling events: %s", e)
 
@@ -1120,6 +1436,30 @@ class MiddlePanel(QWidget):
                         break
             except Exception as e:
                 logger.error("Error polling device events: %s", e)
+
+    def _on_mic_combo_changed(self, index: int):
+        """Handle mic combo selection change - switch mic if recording."""
+        if not self.recording_session:
+            return  # Not recording, nothing to do
+
+        new_mic_id = self.mic_combo.itemData(index)
+        if not new_mic_id or new_mic_id == self._current_mic_id:
+            return  # Same mic or no mic selected
+
+        # Switch mic mid-recording
+        try:
+            self.recording_session.switch_mic(new_mic_id)
+            logger.info("Requesting mic switch to: %s", new_mic_id)
+        except Exception as e:
+            logger.error("Failed to switch mic: %s", e)
+            # Revert combo to current mic
+            if self._current_mic_id:
+                for i in range(self.mic_combo.count()):
+                    if self.mic_combo.itemData(i) == self._current_mic_id:
+                        self.mic_combo.blockSignals(True)
+                        self.mic_combo.setCurrentIndex(i)
+                        self.mic_combo.blockSignals(False)
+                        break
 
     def _handle_audio_error(self, error_msg: str):
         """Handle audio errors."""
@@ -1213,12 +1553,34 @@ class MiddlePanel(QWidget):
             if self.on_history_changed:
                 self.on_history_changed()
 
+            # Compress audio files after successful transcription (lazy compression)
+            self._compress_recording_audio(self._transcribing_rec_id)
+
     def _on_transcription_error(self, error_msg: str):
         """Handle transcription error."""
         self.status_label.setText("Transcription Failed")
         self.transcribe_btn.setEnabled(True)
         self.transcribe_btn.setText("Transcribe")
         QMessageBox.warning(self, "Transcription Error", error_msg)
+
+    def _compress_recording_audio(self, rec_id: str) -> None:
+        """Compress audio files for a recording after transcription.
+
+        This converts WAV files to FLAC for storage optimization.
+        Original WAV files are kept for now (lazy cleanup can be added later).
+        """
+        rec = self.db.get_recording(rec_id)
+        if not rec or not rec.get("directory_path"):
+            return
+
+        recording_dir = rec["directory_path"]
+        try:
+            results = compress_recording_audio(recording_dir, delete_originals=False)
+            if results:
+                compressed_count = sum(1 for v in results.values() if v is not None)
+                logger.info("Compressed %d audio files for recording %s", compressed_count, rec_id)
+        except Exception as e:
+            logger.warning("Failed to compress audio for %s: %s", rec_id, e)
 
     def _start_enhancement(self):
         """Start AI enhancement of notes."""
