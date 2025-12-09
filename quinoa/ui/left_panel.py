@@ -9,6 +9,7 @@ from PyQt6.QtWidgets import (
     QAbstractItemView,
     QHBoxLayout,
     QInputDialog,
+    QLineEdit,
     QListWidget,
     QListWidgetItem,
     QMenu,
@@ -113,7 +114,19 @@ class LeftPanel(QWidget):
         self.meeting_list.itemClicked.connect(self._on_list_item_clicked)
         self.view_stack.addWidget(self.meeting_list)
 
-        # Page 1: Folder Tree (History)
+        # Page 1: History Page Container
+        self.history_page = QWidget()
+        history_layout = QVBoxLayout(self.history_page)
+        history_layout.setContentsMargins(0, 0, 0, 0)
+        history_layout.setSpacing(LAYOUT_MARGIN_SMALL)
+
+        # Search Bar
+        self.search_bar = QLineEdit()
+        self.search_bar.setPlaceholderText("Filter meetings...")
+        self.search_bar.textChanged.connect(self._filter_history)
+        history_layout.addWidget(self.search_bar)
+
+        # Folder Tree
         self.folder_tree = FolderTree()
         self.folder_tree.setHeaderHidden(True)
         self.folder_tree.setDragEnabled(True)
@@ -124,7 +137,8 @@ class LeftPanel(QWidget):
         self.folder_tree.itemClicked.connect(self._on_tree_item_clicked)
         self.folder_tree.item_moved_to_folder.connect(self._on_item_moved_to_folder)
 
-        self.view_stack.addWidget(self.folder_tree)
+        history_layout.addWidget(self.folder_tree)
+        self.view_stack.addWidget(self.history_page)
 
         # New Folder / Meeting Buttons
         self.action_layout = QHBoxLayout()
@@ -213,6 +227,9 @@ class LeftPanel(QWidget):
         current_selection = self._selected_rec_id
         self.folder_tree.clear()
 
+        # Reset search filter
+        self.search_bar.clear()
+
         try:
             # Get data
             folders = self.db.get_folders()
@@ -284,6 +301,35 @@ class LeftPanel(QWidget):
 
         except Exception as e:
             logger.error("Error refreshing folder tree: %s", e)
+
+    def _filter_history(self, text: str):
+        """Filter the history tree."""
+        search_text = text.lower().strip()
+        root = self.folder_tree.invisibleRootItem()
+        for i in range(root.childCount()):
+            self._filter_recursive(root.child(i), search_text)
+
+    def _filter_recursive(self, item: QTreeWidgetItem, text: str) -> bool:
+        """Recursively filter tree items."""
+        # Check if item matches
+        item_text = item.text(0).lower()
+        matches = text in item_text
+
+        # Check children
+        child_matches = False
+        for i in range(item.childCount()):
+            if self._filter_recursive(item.child(i), text):
+                child_matches = True
+
+        # If item matches or any child matches, show it
+        should_show = matches or child_matches
+        item.setHidden(not should_show)
+
+        # If showing because of child or match, expand if there is text
+        if should_show and text:
+            item.setExpanded(True)
+
+        return should_show
 
     def _on_item_moved_to_folder(self, rec_id: str, folder_id: str | None):
         """Handle item dropped into a folder."""
