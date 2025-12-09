@@ -18,7 +18,6 @@ from PyQt6.QtWidgets import (
 
 from quinoa.constants import LAYOUT_MARGIN_SMALL
 from quinoa.storage.database import Database
-from quinoa.ui.styles import MEETING_LIST_STYLE
 
 logger = logging.getLogger("quinoa")
 
@@ -49,7 +48,6 @@ class LeftPanel(QWidget):
 
         # Meeting list
         self.meeting_list = QListWidget()
-        self.meeting_list.setStyleSheet(MEETING_LIST_STYLE)
         self.meeting_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.meeting_list.customContextMenuRequested.connect(self._show_context_menu)
         self.meeting_list.itemClicked.connect(self._on_item_clicked)

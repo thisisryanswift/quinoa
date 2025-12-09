@@ -25,7 +25,6 @@ from quinoa.ui.calendar_panel import CalendarPanel
 from quinoa.ui.middle_panel import MiddlePanel
 from quinoa.ui.right_panel import RightPanel
 from quinoa.ui.settings_dialog import SettingsDialog
-from quinoa.ui.styles import SPLITTER_STYLE
 from quinoa.ui.tray_icon import TrayIconManager
 
 logger = logging.getLogger("quinoa")
@@ -57,8 +56,7 @@ class MainWindow(QMainWindow):
 
         # Create main splitter (horizontal, 3 columns)
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
-        self.splitter.setHandleWidth(8)  # Wider handle for easier grabbing
-        self.splitter.setStyleSheet(SPLITTER_STYLE)
+        self.splitter.setHandleWidth(6)
         self.setCentralWidget(self.splitter)
 
         # Left panel - Calendar/Navigation

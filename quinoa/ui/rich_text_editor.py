@@ -21,7 +21,6 @@ from PyQt6.QtWidgets import (
 )
 
 from quinoa.ui.markdown_converter import html_to_markdown, markdown_to_html
-from quinoa.ui.styles import RICH_EDITOR_STYLE, RICH_EDITOR_TOOLBAR_STYLE
 
 
 class RichTextEditor(QWidget):
@@ -49,14 +48,12 @@ class RichTextEditor(QWidget):
         # Toolbar
         self.toolbar = QToolBar()
         self.toolbar.setMovable(False)
-        self.toolbar.setStyleSheet(RICH_EDITOR_TOOLBAR_STYLE)
         self._setup_toolbar()
         layout.addWidget(self.toolbar)
 
         # Editor
         self.editor = QTextEdit()
         self.editor.setAcceptRichText(True)
-        self.editor.setStyleSheet(RICH_EDITOR_STYLE)
         self.editor.textChanged.connect(self.textChanged.emit)
         layout.addWidget(self.editor)
 

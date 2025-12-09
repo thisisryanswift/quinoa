@@ -1,13 +1,24 @@
-"""UI Stylesheets for Quinoa application."""
+"""UI Stylesheets for Quinoa application.
+
+This file contains only styles for custom widgets that need specific colors
+for semantic meaning (e.g., record button = red, VU meters).
+
+Standard widgets (lists, buttons, labels) inherit from the system theme
+(Breeze on KDE) for a native look.
+"""
 
 
 def level_meter_style(chunk_color: str) -> str:
-    """Generate a level meter stylesheet with the specified chunk color."""
+    """Generate a level meter stylesheet with the specified chunk color.
+
+    These use semantic colors (green=mic, blue=system) that should
+    remain consistent regardless of theme.
+    """
     return f"""
         QProgressBar {{
-            border: 1px solid #bbb;
+            border: 1px solid palette(mid);
             border-radius: 3px;
-            background-color: #eee;
+            background-color: palette(base);
             height: 10px;
         }}
         QProgressBar::chunk {{
@@ -16,32 +27,42 @@ def level_meter_style(chunk_color: str) -> str:
     """
 
 
-# Level meter styles
-LEVEL_METER_MIC = level_meter_style("#2ecc71")  # Green
-LEVEL_METER_SYSTEM = level_meter_style("#3498db")  # Blue
+# Level meter styles - semantic colors for audio sources
+LEVEL_METER_MIC = level_meter_style("#2ecc71")  # Green for microphone
+LEVEL_METER_SYSTEM = level_meter_style("#3498db")  # Blue for system audio
 
-# Button styles
+# Recording button styles - semantic colors for recording state
 BUTTON_RECORD = """
     QPushButton {
         background-color: #e74c3c;
         color: white;
-        font-size: 18px;
+        font-size: 16px;
+        font-weight: bold;
         border-radius: 5px;
+        padding: 8px 16px;
     }
     QPushButton:hover {
         background-color: #c0392b;
+    }
+    QPushButton:pressed {
+        background-color: #a93226;
     }
 """
 
 BUTTON_STOP = """
     QPushButton {
-        background-color: #333;
+        background-color: #555;
         color: white;
-        font-size: 18px;
+        font-size: 16px;
+        font-weight: bold;
         border-radius: 5px;
+        padding: 8px 16px;
     }
     QPushButton:hover {
-        background-color: #555;
+        background-color: #666;
+    }
+    QPushButton:pressed {
+        background-color: #444;
     }
 """
 
@@ -49,155 +70,28 @@ BUTTON_PAUSE = """
     QPushButton {
         background-color: #f39c12;
         color: white;
-        font-size: 18px;
+        font-size: 16px;
+        font-weight: bold;
         border-radius: 5px;
+        padding: 8px 16px;
     }
     QPushButton:hover {
         background-color: #e67e22;
     }
-    QPushButton:disabled {
-        background-color: #bdc3c7;
-    }
-"""
-
-# Label styles
-TITLE_LABEL = "font-size: 24px; font-weight: bold;"
-STATUS_LABEL = "font-size: 16px; color: #666;"
-STATUS_LABEL_PAUSED = "font-size: 16px; color: orange;"
-
-# Splitter style - wider handle for easier grabbing
-# Uses transparent background with subtle hover/press feedback
-SPLITTER_STYLE = """
-    QSplitter::handle {
-        background-color: transparent;
-    }
-    QSplitter::handle:horizontal {
-        width: 6px;
-    }
-    QSplitter::handle:vertical {
-        height: 6px;
-    }
-    QSplitter::handle:hover {
-        background-color: rgba(128, 128, 128, 0.3);
-    }
-    QSplitter::handle:pressed {
-        background-color: rgba(128, 128, 128, 0.5);
-    }
-"""
-
-# Rich text editor styles
-RICH_EDITOR_STYLE = """
-    QTextEdit {
-        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', sans-serif;
-        font-size: 14px;
-        padding: 12px;
-        border: none;
-        background-color: #1e1e1e;
-        color: #e0e0e0;
-    }
-"""
-
-RICH_EDITOR_TOOLBAR_STYLE = """
-    QToolBar {
-        background-color: #2d2d2d;
-        border-bottom: 1px solid #404040;
-        spacing: 2px;
-        padding: 4px;
-    }
-    QToolButton {
-        background-color: transparent;
-        border: none;
-        border-radius: 4px;
-        padding: 4px 8px;
-        color: #e0e0e0;
-        font-size: 13px;
-        min-width: 24px;
-    }
-    QToolButton:hover {
-        background-color: #404040;
-    }
-    QToolButton:checked {
-        background-color: #0066cc;
-    }
-    QToolButton:pressed {
-        background-color: #505050;
-    }
-    QToolButton::menu-indicator {
-        image: none;
-        width: 0;
-    }
-"""
-
-# View selector tab-style buttons for historic meeting views
-VIEW_SELECTOR_STYLE = """
-    QPushButton {
-        background-color: transparent;
-        border: none;
-        border-bottom: 2px solid transparent;
-        padding: 8px 16px;
-        color: #888;
-        font-size: 14px;
-    }
-    QPushButton:checked {
-        color: #fff;
-        border-bottom: 2px solid #3498db;
-    }
-    QPushButton:hover {
-        color: #bbb;
+    QPushButton:pressed {
+        background-color: #d35400;
     }
     QPushButton:disabled {
-        color: #555;
+        background-color: palette(mid);
+        color: palette(disabled-text);
     }
 """
 
-# Meeting header styles
-MEETING_HEADER_TITLE = """
-    font-size: 20px;
-    font-weight: bold;
-    color: #ffffff;
-    padding: 0;
-    margin: 0;
-"""
+# Status label - just for the paused state color
+STATUS_LABEL_PAUSED = "color: #f39c12;"  # Orange to match pause button
 
-MEETING_HEADER_CHIP = """
-    QLabel {
-        background-color: #2d2d2d;
-        color: #aaa;
-        border-radius: 10px;
-        padding: 4px 10px;
-        font-size: 12px;
-    }
-"""
-
-# Left panel meeting list styles
-MEETING_LIST_STYLE = """
-    QListWidget {
-        background-color: transparent;
-        border: none;
-        outline: none;
-    }
-    QListWidget::item {
-        padding: 8px 4px;
-        border-bottom: 1px solid #333;
-    }
-    QListWidget::item:selected {
-        background-color: #2d4a6d;
-        border-radius: 4px;
-    }
-    QListWidget::item:hover {
-        background-color: #333;
-    }
-"""
-
-DATE_GROUP_HEADER_STYLE = """
-    font-size: 11px;
-    font-weight: bold;
-    color: #888;
-    padding: 8px 4px 4px 4px;
-    text-transform: uppercase;
-"""
-
-# Speaker colors for transcript bubbles
+# Speaker colors for transcript bubbles - keep these consistent
+# First color is always for "Me" (the user)
 SPEAKER_COLORS = [
     "#3498db",  # Blue (Me)
     "#9b59b6",  # Purple

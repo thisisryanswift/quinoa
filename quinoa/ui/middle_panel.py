@@ -56,11 +56,8 @@ from quinoa.ui.styles import (
     BUTTON_STOP,
     LEVEL_METER_MIC,
     LEVEL_METER_SYSTEM,
-    MEETING_HEADER_CHIP,
     SPEAKER_COLORS,
-    STATUS_LABEL,
     STATUS_LABEL_PAUSED,
-    VIEW_SELECTOR_STYLE,
 )
 from quinoa.ui.transcribe_worker import TranscribeWorker
 from quinoa.ui.transcript_handler import (
@@ -341,11 +338,9 @@ class MiddlePanel(QWidget):
         chips_row.setSpacing(8)
 
         self.header_date_chip = QLabel()
-        self.header_date_chip.setStyleSheet(MEETING_HEADER_CHIP)
         chips_row.addWidget(self.header_date_chip)
 
         self.header_duration_chip = QLabel()
-        self.header_duration_chip.setStyleSheet(MEETING_HEADER_CHIP)
         chips_row.addWidget(self.header_duration_chip)
 
         chips_row.addStretch()
@@ -355,7 +350,6 @@ class MiddlePanel(QWidget):
         self.speakers_row = QHBoxLayout()
         self.speakers_row.setSpacing(6)
         self.speakers_label = QLabel("Speakers:")
-        self.speakers_label.setStyleSheet("color: #888; font-size: 12px;")
         self.speakers_row.addWidget(self.speakers_label)
         self.speaker_chips_container = QWidget()
         self.speaker_chips_layout = QHBoxLayout(self.speaker_chips_container)
@@ -637,7 +631,7 @@ class MiddlePanel(QWidget):
         # Notes button
         self.notes_btn = QPushButton("Notes")
         self.notes_btn.setCheckable(True)
-        self.notes_btn.setStyleSheet(VIEW_SELECTOR_STYLE)
+        self.notes_btn.setFlat(True)
         self.view_button_group.addButton(self.notes_btn, ViewType.NOTES)
         layout.addWidget(self.notes_btn)
 
@@ -645,14 +639,14 @@ class MiddlePanel(QWidget):
         self.transcript_btn = QPushButton("Transcript")
         self.transcript_btn.setCheckable(True)
         self.transcript_btn.setChecked(True)  # Default view
-        self.transcript_btn.setStyleSheet(VIEW_SELECTOR_STYLE)
+        self.transcript_btn.setFlat(True)
         self.view_button_group.addButton(self.transcript_btn, ViewType.TRANSCRIPT)
         layout.addWidget(self.transcript_btn)
 
         # Enhanced button
         self.enhanced_btn = QPushButton("Enhanced")
         self.enhanced_btn.setCheckable(True)
-        self.enhanced_btn.setStyleSheet(VIEW_SELECTOR_STYLE)
+        self.enhanced_btn.setFlat(True)
         self.view_button_group.addButton(self.enhanced_btn, ViewType.ENHANCED)
         layout.addWidget(self.enhanced_btn)
 
@@ -781,7 +775,6 @@ class MiddlePanel(QWidget):
         # Status label (inside recording container)
         self.status_label = QLabel("Ready")
         self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.status_label.setStyleSheet(STATUS_LABEL)
         rec_layout.addWidget(self.status_label)
 
         # Recording buttons row
@@ -1395,7 +1388,7 @@ class MiddlePanel(QWidget):
                     self.is_paused = False
                     self.recording_paused_time += time.time() - self.pause_start_time
                     self.pause_btn.setText("Pause")
-                    self.status_label.setStyleSheet(STATUS_LABEL)
+                    self.status_label.setStyleSheet("")  # Reset to default
                 elif event.type_ == "stopped":
                     self._stop_recording()
                 elif event.type_ == "error":
@@ -1405,7 +1398,7 @@ class MiddlePanel(QWidget):
                     self.status_label.setStyleSheet(STATUS_LABEL_PAUSED)
                 elif event.type_ == "started":
                     self.status_label.setText("Recording...")
-                    self.status_label.setStyleSheet(STATUS_LABEL)
+                    self.status_label.setStyleSheet("")  # Reset to default
                 elif event.type_ == "mic_switched":
                     new_id = event.device_id
                     self._current_mic_id = new_id
