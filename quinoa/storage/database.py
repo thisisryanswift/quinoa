@@ -89,6 +89,22 @@ class Database:
                 conn.execute("ALTER TABLE recordings ADD COLUMN notes TEXT DEFAULT ''")
             if "enhanced_notes" not in columns:
                 conn.execute("ALTER TABLE recordings ADD COLUMN enhanced_notes TEXT")
+            if "folder_id" not in columns:
+                conn.execute(
+                    "ALTER TABLE recordings ADD COLUMN folder_id TEXT REFERENCES meeting_folders(id)"
+                )
+
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS meeting_folders (
+                    id TEXT PRIMARY KEY,
+                    name TEXT NOT NULL,
+                    parent_id TEXT,
+                    recurring_event_id TEXT,
+                    created_at TIMESTAMP,
+                    sort_order INTEGER DEFAULT 0,
+                    FOREIGN KEY(parent_id) REFERENCES meeting_folders(id)
+                )
+            """)
 
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS transcripts (
@@ -159,9 +175,23 @@ class Database:
                     etag TEXT,
                     synced_at TIMESTAMP,
                     recording_id TEXT,
+                    hidden INTEGER DEFAULT 0,
+                    notes TEXT DEFAULT '',
                     FOREIGN KEY(recording_id) REFERENCES recordings(id)
                 )
             """)
+
+            # Check for missing hidden/notes columns (migration)
+            cursor = conn.execute("PRAGMA table_info(calendar_events)")
+            columns = [row[1] for row in cursor.fetchall()]
+            if "hidden" not in columns:
+                conn.execute("ALTER TABLE calendar_events ADD COLUMN hidden INTEGER DEFAULT 0")
+            if "notes" not in columns:
+                conn.execute("ALTER TABLE calendar_events ADD COLUMN notes TEXT DEFAULT ''")
+            if "folder_id" not in columns:
+                conn.execute(
+                    "ALTER TABLE calendar_events ADD COLUMN folder_id TEXT REFERENCES meeting_folders(id)"
+                )
             conn.execute("""
                 CREATE INDEX IF NOT EXISTS idx_calendar_events_start
                 ON calendar_events(start_time)
@@ -355,6 +385,11 @@ class Database:
     def delete_recording(self, rec_id: str) -> None:
         """Delete a recording and all related data."""
         with self._conn() as conn:
+            # Unlink from calendar events first
+            conn.execute(
+                "UPDATE calendar_events SET recording_id = NULL WHERE recording_id = ?", (rec_id,)
+            )
+
             conn.execute("DELETE FROM action_items WHERE recording_id = ?", (rec_id,))
             conn.execute("DELETE FROM transcripts WHERE recording_id = ?", (rec_id,))
             conn.execute("DELETE FROM file_search_sync WHERE recording_id = ?", (rec_id,))
@@ -506,7 +541,8 @@ class Database:
                         attendees = excluded.attendees,
                         organizer_email = excluded.organizer_email,
                         etag = excluded.etag,
-                        synced_at = excluded.synced_at
+                        synced_at = excluded.synced_at,
+                        hidden = COALESCE(calendar_events.hidden, 0)
                     """,
                     (
                         event["event_id"],
@@ -524,6 +560,23 @@ class Database:
                 total_changes += conn.total_changes
         return total_changes
 
+    def save_calendar_event_notes(self, event_id: str, notes: str) -> None:
+        """Save notes for a calendar event."""
+        with self._conn() as conn:
+            conn.execute(
+                "UPDATE calendar_events SET notes = ? WHERE event_id = ?",
+                (notes, event_id),
+            )
+
+    def get_calendar_event_notes(self, event_id: str) -> str:
+        """Get notes for a calendar event."""
+        with self._conn() as conn:
+            cursor = conn.execute(
+                "SELECT notes FROM calendar_events WHERE event_id = ?", (event_id,)
+            )
+            row = cursor.fetchone()
+            return row[0] if row and row[0] else ""
+
     def get_calendar_events(self, start_date: datetime, end_date: datetime) -> list[dict[str, Any]]:
         """Get calendar events in a date range with recording info."""
         with self._conn() as conn:
@@ -539,6 +592,7 @@ class Database:
                 FROM calendar_events ce
                 LEFT JOIN recordings r ON ce.recording_id = r.id
                 WHERE ce.start_time >= ? AND ce.start_time < ?
+                  AND (ce.hidden IS NULL OR ce.hidden = 0)
                 ORDER BY ce.start_time ASC
                 """,
                 (start_date, end_date),
@@ -550,6 +604,14 @@ class Database:
         today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
         today_end = today_start.replace(hour=23, minute=59, second=59)
         return self.get_calendar_events(today_start, today_end)
+
+    def set_calendar_event_hidden(self, event_id: str, hidden: bool = True) -> None:
+        """Set the hidden status of a calendar event."""
+        with self._conn() as conn:
+            conn.execute(
+                "UPDATE calendar_events SET hidden = ? WHERE event_id = ?",
+                (1 if hidden else 0, event_id),
+            )
 
     def get_current_meeting(self, buffer_minutes: int = 10) -> dict[str, Any] | None:
         """Find a meeting happening now (within buffer window)."""
@@ -564,8 +626,9 @@ class Database:
             cursor = conn.execute(
                 """
                 SELECT * FROM calendar_events
-                WHERE start_time <= ? AND end_time >= ?
-                   OR (start_time >= ? AND start_time <= ?)
+                WHERE (start_time <= ? AND end_time >= ?
+                   OR (start_time >= ? AND start_time <= ?))
+                   AND (hidden IS NULL OR hidden = 0)
                 ORDER BY start_time ASC
                 LIMIT 1
                 """,
@@ -607,3 +670,105 @@ class Database:
         """Clear all calendar events (for re-sync or logout)."""
         with self._conn() as conn:
             conn.execute("DELETE FROM calendar_events")
+
+    # ==================== Folder Management Methods ====================
+
+    def create_folder(
+        self,
+        folder_id: str,
+        name: str,
+        parent_id: str | None = None,
+        recurring_event_id: str | None = None,
+        sort_order: int = 0,
+    ) -> None:
+        """Create a new meeting folder."""
+        with self._conn() as conn:
+            conn.execute(
+                """
+                INSERT INTO meeting_folders
+                (id, name, parent_id, recurring_event_id, created_at, sort_order)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    folder_id,
+                    name,
+                    parent_id,
+                    recurring_event_id,
+                    datetime.now(),
+                    sort_order,
+                ),
+            )
+
+    def update_folder(
+        self,
+        folder_id: str,
+        name: str | None = None,
+        parent_id: str | None = None,
+        sort_order: int | None = None,
+    ) -> None:
+        """Update a meeting folder."""
+        with self._conn() as conn:
+            updates = []
+            params: list[Any] = []
+
+            if name is not None:
+                updates.append("name = ?")
+                params.append(name)
+            if parent_id is not None:
+                updates.append("parent_id = ?")
+                params.append(parent_id)
+            if sort_order is not None:
+                updates.append("sort_order = ?")
+                params.append(sort_order)
+
+            if not updates:
+                return
+
+            params.append(folder_id)
+            conn.execute(
+                f"UPDATE meeting_folders SET {', '.join(updates)} WHERE id = ?",
+                params,
+            )
+
+    def delete_folder(self, folder_id: str) -> None:
+        """Delete a folder.
+
+        Items in the folder will have their folder_id set to NULL (Uncategorized).
+        Subfolders will have their parent_id set to NULL (become top-level).
+        """
+        with self._conn() as conn:
+            # Unlink subfolders
+            conn.execute(
+                "UPDATE meeting_folders SET parent_id = NULL WHERE parent_id = ?", (folder_id,)
+            )
+            # Unlink recordings
+            conn.execute("UPDATE recordings SET folder_id = NULL WHERE folder_id = ?", (folder_id,))
+            # Unlink calendar events
+            conn.execute(
+                "UPDATE calendar_events SET folder_id = NULL WHERE folder_id = ?", (folder_id,)
+            )
+            # Delete the folder
+            conn.execute("DELETE FROM meeting_folders WHERE id = ?", (folder_id,))
+
+    def get_folders(self) -> list[dict[str, Any]]:
+        """Get all folders ordered by sort_order and name."""
+        with self._conn() as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute("SELECT * FROM meeting_folders ORDER BY sort_order ASC, name ASC")
+            return [dict(row) for row in cursor.fetchall()]
+
+    def set_recording_folder(self, rec_id: str, folder_id: str | None) -> None:
+        """Move a recording to a folder."""
+        with self._conn() as conn:
+            conn.execute(
+                "UPDATE recordings SET folder_id = ? WHERE id = ?",
+                (folder_id, rec_id),
+            )
+
+    def set_calendar_event_folder(self, event_id: str, folder_id: str | None) -> None:
+        """Move a calendar event to a folder."""
+        with self._conn() as conn:
+            conn.execute(
+                "UPDATE calendar_events SET folder_id = ? WHERE event_id = ?",
+                (folder_id, event_id),
+            )

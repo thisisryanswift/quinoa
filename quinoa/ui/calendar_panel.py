@@ -509,6 +509,7 @@ class CalendarPanel(QWidget):
                 event_id = item.data(Qt.ItemDataRole.UserRole)
                 event = self.db.get_calendar_event(event_id)
                 if event:
+                    title = event.get("title", "Unknown")
                     # Show attendees as info
                     attendees_json = event.get("attendees")
                     if attendees_json:
@@ -526,7 +527,34 @@ class CalendarPanel(QWidget):
                         except json.JSONDecodeError:
                             pass
 
+                    menu.addSeparator()
+
+                    hide_action = QAction("Hide from list", self)
+                    hide_action.setStatusTip("Hide this meeting from the calendar list")
+                    hide_action.triggered.connect(
+                        lambda: self._hide_calendar_event(event_id, title)
+                    )
+                    menu.addAction(hide_action)
+
         menu.exec(self.meeting_list.viewport().mapToGlobal(position))
+
+    def _hide_calendar_event(self, event_id: str, title: str):
+        """Hide a calendar event from the list."""
+        reply = QMessageBox.question(
+            self,
+            "Hide Meeting",
+            f"Are you sure you want to hide '{title}'?\n\n"
+            "You won't see it in the list anymore, but it will remain in your Google Calendar.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+
+        if reply == QMessageBox.StandardButton.Yes:
+            try:
+                self.db.set_calendar_event_hidden(event_id, True)
+                self.refresh()
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Failed to hide meeting: {e}")
 
     def _rename_recording(self, item: QListWidgetItem):
         """Rename a recording from its list item."""

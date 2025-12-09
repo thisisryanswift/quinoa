@@ -238,6 +238,7 @@ class MiddlePanel(QWidget):
 
         # Viewing state
         self._viewing_rec_id: str | None = None
+        self._viewing_event_id: str | None = None  # Track currently viewed calendar event
         self._current_view = ViewType.TRANSCRIPT
         self._cached_notes = ""
         self._cached_transcript = ""
@@ -857,6 +858,7 @@ class MiddlePanel(QWidget):
 
         # Clear previous state
         self._viewing_rec_id = None
+        self._viewing_event_id = event_id
         self._mode = PanelMode.VIEWING
         self._cached_notes = ""
         self._cached_transcript = ""
@@ -922,31 +924,30 @@ class MiddlePanel(QWidget):
         # Show recording controls for upcoming/in-progress meetings
         if is_future or is_in_progress:
             self.recording_controls_container.setVisible(True)
-            self.view_selector_widget.setVisible(False)
             if is_in_progress:
-                content = "## Meeting in progress\n\n"
-                content += "*Click the record button to start recording this meeting.*\n\n"
+                self.status_label.setText("Meeting in progress")
             else:
-                content = "## Upcoming meeting\n\n"
-                content += "*Click the record button when the meeting starts.*\n\n"
+                self.status_label.setText("Upcoming meeting")
         else:
             self.recording_controls_container.setVisible(False)
-            self.view_selector_widget.setVisible(False)
-            content = "## This meeting wasn't recorded\n\n"
 
-        if platform:
-            content += f"**Platform:** {platform}\n\n"
-        if attendee_names:
-            content += f"**Attendees:** {', '.join(attendee_names[:10])}"
-            if len(attendee_names) > 10:
-                content += f" (+{len(attendee_names) - 10} more)"
-            content += "\n"
+        # Enable view selector for Notes
+        self.view_selector_widget.setVisible(True)
+        self._current_view = ViewType.NOTES
+        self.notes_btn.setChecked(True)
 
-        self.transcript_viewer.set_markdown(content)
-        self.content_stack.setCurrentIndex(1)  # Plain text viewer
-
-        # Disable transcribe button (no recording to transcribe)
+        # Disable Transcript and Enhanced tabs
+        self.transcript_btn.setEnabled(False)
+        self.enhanced_btn.setEnabled(False)
         self.transcribe_btn.setEnabled(False)
+
+        # Load notes
+        self._cached_notes = self.db.get_calendar_event_notes(event_id)
+        self._update_view_content()
+
+        # Prevent unused variable warnings
+        _ = platform
+        _ = attendee_names
 
     def load_meeting(self, rec_id: str):
         """Load a meeting for viewing."""
@@ -959,7 +960,12 @@ class MiddlePanel(QWidget):
             self._save_current_notes()
 
         self._viewing_rec_id = rec_id
+        self._viewing_event_id = None
         self._mode = PanelMode.VIEWING
+
+        # Enable all tabs
+        self.transcript_btn.setEnabled(True)
+        self.enhanced_btn.setEnabled(True)
 
         # Load and cache all data
         transcript_data = self.db.get_transcript(rec_id)
@@ -1019,6 +1025,7 @@ class MiddlePanel(QWidget):
             self._save_current_notes()
 
         self._viewing_rec_id = None
+        self._viewing_event_id = None
         self._mode = PanelMode.IDLE
 
         # Clear cached data
@@ -1087,7 +1094,16 @@ class MiddlePanel(QWidget):
             (event_id, title) tuple if a meeting was selected or impromptu chosen,
             None if user cancelled the dialog.
         """
-        current_meeting = self.db.get_current_meeting()
+        current_meeting = None
+
+        # Prioritize currently viewed meeting
+        if self._viewing_event_id:
+            current_meeting = self.db.get_calendar_event(self._viewing_event_id)
+
+        # Fallback to time-based detection
+        if not current_meeting:
+            current_meeting = self.db.get_current_meeting()
+
         if not current_meeting:
             return (None, None)
 
@@ -1183,6 +1199,12 @@ class MiddlePanel(QWidget):
 
             # Add to DB
             mic_name = self.mic_combo.currentText()
+
+            # Check for existing notes from calendar event
+            initial_notes = ""
+            if linked_event_id:
+                initial_notes = self.db.get_calendar_event_notes(linked_event_id)
+
             self.db.add_recording(
                 self.current_rec_id,
                 rec_title,
@@ -1194,13 +1216,16 @@ class MiddlePanel(QWidget):
                 directory_path=self.current_session_dir,
             )
 
+            if initial_notes:
+                self.db.save_notes(self.current_rec_id, initial_notes)
+
             # Link to calendar event if selected
             if linked_event_id:
                 self.db.link_recording_to_event(linked_event_id, self.current_rec_id)
                 logger.info("Recording linked to calendar event: %s", linked_event_id)
 
-            # Clear notes for new recording
-            self._set_notes_text("")
+            # Set notes text (copying from calendar event or clearing)
+            self._set_notes_text(initial_notes)
             self.content_stack.setCurrentIndex(0)  # Show notes editor
 
             # Update UI
@@ -1293,12 +1318,16 @@ class MiddlePanel(QWidget):
 
     def _save_current_notes(self):
         """Save notes from the editor when in viewing mode."""
-        if self._viewing_rec_id and self._current_view == ViewType.NOTES:
+        if self._mode == PanelMode.VIEWING and self._current_view == ViewType.NOTES:
             notes = self.notes_editor.get_markdown()
             self._cached_notes = notes  # Update cache
-            if notes:
+
+            if self._viewing_rec_id:
                 self.db.save_notes(self._viewing_rec_id, notes)
-                logger.debug("Notes saved for %s", self._viewing_rec_id)
+                logger.debug("Notes saved for recording %s", self._viewing_rec_id)
+            elif self._viewing_event_id:
+                self.db.save_calendar_event_notes(self._viewing_event_id, notes)
+                logger.debug("Notes saved for event %s", self._viewing_event_id)
 
     def _on_utterances_changed(self, utterances: list[dict]):
         """Handle utterances being edited (speaker reassignment)."""

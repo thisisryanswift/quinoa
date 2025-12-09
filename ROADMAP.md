@@ -92,6 +92,37 @@ Detect extended silence and prompt user to stop recording, or auto-stop after co
 
 ---
 
+## Future Ideas (Not Yet Planned)
+
+Ideas captured for future consideration. Not currently scoped or prioritized.
+
+### Export & Sharing
+- Export meeting notes to Markdown/PDF
+- Obsidian vault integration (write .md files to user's vault)
+- Share meeting summary via email/Slack
+- Copy transcript to clipboard with formatting
+
+### Action Item Tracking
+- Standalone "Action Items" view across all meetings
+- Mark items complete/incomplete
+- Assign action items to people
+- Integration with Todoist or other task managers
+
+### Meeting Templates & Prep
+- Pre-meeting templates (agenda, questions to ask)
+- Auto-populate notes with template when meeting starts
+- "Prep" tab showing context from previous meetings in series
+- AI-generated suggested questions based on past meetings
+
+### Analytics & Insights
+- Meeting time stats (hours/week in meetings)
+- Trends over time
+- "You discussed X topic 5 times this month"
+- Which meetings run over time?
+- Speaker talk-time analysis
+
+---
+
 ## Completed Milestones
 
 ### V6 - Audio Improvements (Dec 2025)
