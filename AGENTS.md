@@ -10,6 +10,31 @@ Quinoa is a meeting recording and transcription application. It uses:
 - **Google Gemini** for AI transcription
 - **SQLite** for local storage
 
+## Task Management (Beads)
+
+This project uses **Beads** (`bd`) for task tracking. It provides persistent memory across sessions and helps you find ready-to-work tasks.
+
+### Core Workflow
+1. **Start of session**: Run `bd ready` to see what to work on.
+2. **During work**: Create issues for new discoveries:
+   ```bash
+   bd create "Task description" -t bug|feature|task -p 2
+   ```
+3. **Taking ownership**: Mark issue as in progress:
+   ```bash
+   bd update <issue-id> --status in_progress
+   ```
+4. **Completion**: Close with a reason:
+   ```bash
+   bd close <issue-id> --reason "Completed implementation"
+   ```
+
+### Commands
+- `bd list`: List all open issues
+- `bd ready`: List unblocked issues ready for work
+- `bd show <id>`: View issue details
+- `bd help`: See all commands
+
 ## Code Quality Standards
 
 ### Linting and Type Checking
@@ -117,7 +142,8 @@ Security best practice - API keys are stored in the system keyring (GNOME Keyrin
 
 ## Remaining Work
 
-See `ROADMAP.md` for planned features, known issues, and completed milestones.
+Use `bd list` to see all open tasks and `bd ready` to see what is ready to be worked on.
+See `ROADMAP.md` for high-level planning and completed milestones.
 
 ## Troubleshooting
 
