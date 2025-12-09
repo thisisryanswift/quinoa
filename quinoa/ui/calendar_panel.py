@@ -75,6 +75,9 @@ class CalendarPanel(QWidget):
         self.meeting_list.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
         self.meeting_list.setWordWrap(True)  # Wrap long meeting names
         self.meeting_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        # Add spacing/padding for better readability (keeps native theme colors)
+        self.meeting_list.setSpacing(2)
+        self.meeting_list.setStyleSheet("QListWidget::item { padding: 6px 4px; }")
 
         # Connect scroll event for lazy loading
         self.meeting_list.verticalScrollBar().valueChanged.connect(self._on_scroll)
