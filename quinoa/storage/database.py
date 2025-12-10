@@ -326,6 +326,32 @@ class Database:
             query = f"UPDATE recordings SET {', '.join(updates)} WHERE id = ?"
             conn.execute(query, params)
 
+    def update_recording_paths(
+        self,
+        rec_id: str,
+        stereo_path: str | None = None,
+    ) -> None:
+        """Update paths for a recording."""
+        with self._conn() as conn:
+            if stereo_path:
+                conn.execute(
+                    "UPDATE recordings SET stereo_path = ? WHERE id = ?",
+                    (stereo_path, rec_id),
+                )
+
+    def update_recording_paths(
+        self,
+        rec_id: str,
+        stereo_path: str | None = None,
+    ) -> None:
+        """Update paths for a recording."""
+        with self._conn() as conn:
+            if stereo_path:
+                conn.execute(
+                    "UPDATE recordings SET stereo_path = ? WHERE id = ?",
+                    (stereo_path, rec_id),
+                )
+
     def update_recording_title(self, rec_id: str, title: str) -> None:
         with self._conn() as conn:
             conn.execute(

@@ -10,7 +10,7 @@ from pathlib import Path
 
 from PyQt6.QtCore import QThread, pyqtSignal
 
-from quinoa.audio.converter import compress_recording_audio
+from quinoa.audio.converter import compress_recording_audio, mix_recording_audio
 from quinoa.storage.database import Database
 
 logger = logging.getLogger("quinoa")
@@ -115,10 +115,18 @@ class CompressionWorker(QThread):
         rec_id = rec["id"]
         dir_path = rec["directory_path"]
 
-        logger.info("Compressing audio for recording %s", rec_id)
+        logger.info("Processing audio for recording %s", rec_id)
         self.compression_started.emit(rec_id)
 
         try:
+            # 1. Mix audio if needed
+            mixed_path = mix_recording_audio(dir_path)
+            if mixed_path:
+                logger.info("Mixed audio created: %s", mixed_path)
+                # Update DB with stereo path
+                self.db.update_recording_paths(rec_id, stereo_path=str(mixed_path))
+
+            # 2. Compress
             results = compress_recording_audio(dir_path, delete_originals=False)
             compressed_count = sum(1 for v in results.values() if v is not None)
 

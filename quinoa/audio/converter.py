@@ -137,6 +137,62 @@ def compress_audio(
         return None
 
 
+def mix_recording_audio(recording_dir: str | Path) -> Path | None:
+    """Mix microphone and system audio into a stereo file.
+
+    If system audio is missing, just copies microphone.
+    """
+    recording_dir = Path(recording_dir)
+    mic_path = recording_dir / "microphone.wav"
+    sys_path = recording_dir / "system.wav"
+    output_path = recording_dir / "mixed_stereo.wav"
+
+    if output_path.exists():
+        return output_path
+
+    if not mic_path.exists():
+        return None
+
+    if not shutil.which("ffmpeg"):
+        logger.error("ffmpeg not found in PATH")
+        return None
+
+    try:
+        if sys_path.exists():
+            # Mix both
+            # amix inputs=2:duration=longest
+            cmd = [
+                "ffmpeg",
+                "-y",
+                "-i",
+                str(mic_path),
+                "-i",
+                str(sys_path),
+                "-filter_complex",
+                "amix=inputs=2:duration=longest",
+                str(output_path),
+            ]
+        else:
+            # Just copy mic
+            # We use ffmpeg to ensure consistent format if needed, or simple copy
+            # Simple copy is faster
+            shutil.copy2(mic_path, output_path)
+            return output_path
+
+        logger.info("Mixing audio to %s", output_path.name)
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+
+        if result.returncode != 0:
+            logger.error("ffmpeg mix failed: %s", result.stderr)
+            return None
+
+        return output_path
+
+    except Exception as e:
+        logger.error("Failed to mix audio: %s", e)
+        return None
+
+
 def compress_recording_audio(
     recording_dir: str | Path,
     format: str = DEFAULT_FORMAT,
