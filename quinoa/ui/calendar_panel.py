@@ -425,27 +425,20 @@ class CalendarPanel(QWidget):
                 display_text = f"{title} ({time_str})"
                 item = QTreeWidgetItem([display_text, "", ""])
 
-                # Add icons if it's a recording
+                # Add icons for notes/transcript in separate columns
                 if item_type == ITEM_TYPE_RECORDING:
                     rec = self.db.get_recording(item_id)
                     if rec:
-                        style = self.style()
-                        if style:
-                            if rec.get("notes"):
-                                item.setIcon(
-                                    1, style.standardIcon(QStyle.StandardPixmap.SP_FileIcon)
-                                )
-                                item.setToolTip(1, "Has notes")
+                        if rec.get("notes"):
+                            item.setText(1, "📄")
+                            item.setToolTip(1, "Has notes")
+                            item.setTextAlignment(1, Qt.AlignmentFlag.AlignCenter)
 
-                            transcript = self.db.get_transcript(item_id)
-                            if transcript:
-                                item.setIcon(
-                                    2,
-                                    style.standardIcon(
-                                        QStyle.StandardPixmap.SP_MessageBoxInformation
-                                    ),
-                                )
-                                item.setToolTip(2, "Has transcript")
+                        transcript = self.db.get_transcript(item_id)
+                        if transcript:
+                            item.setText(2, "💬")
+                            item.setToolTip(2, "Has transcript")
+                            item.setTextAlignment(2, Qt.AlignmentFlag.AlignCenter)
 
                 if item_type == ITEM_TYPE_RECORDING:
                     item.setData(0, Qt.ItemDataRole.UserRole, f"rec:{item_id}")
