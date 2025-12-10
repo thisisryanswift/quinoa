@@ -392,7 +392,7 @@ class CalendarPanel(QWidget):
                 try:
                     dt = datetime.fromisoformat(ts)
                     time_str = dt.strftime("%b %d %I:%M %p").lstrip("0")
-                except:
+                except (ValueError, TypeError):
                     time_str = ""
 
                 title = f"{rec['title']} ({time_str})"
@@ -652,12 +652,14 @@ class CalendarPanel(QWidget):
         # Track oldest loaded date for lazy loading
         self._oldest_loaded_date = today_start
 
-        # Load initial history in one batch (2 weeks)
-        self._load_initial_history(14)
-
     def _load_recordings_view(self):
         """Load the traditional recordings-only view (when calendar not connected)."""
-        recordings = self.db.get_recordings()
+        # Limit to today's recordings to match "Today" view semantics
+        now = datetime.now()
+        today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+        today_end = today_start.replace(hour=23, minute=59, second=59)
+
+        recordings = self.db.get_recordings_in_range(today_start, today_end)
         current_group = None
 
         for rec in recordings:
@@ -676,6 +678,8 @@ class CalendarPanel(QWidget):
             item = self._create_recording_item(rec)
             self.meeting_list.addItem(item)
             self._restore_selection(rec["id"], ITEM_TYPE_RECORDING, item)
+
+        # Don't set _oldest_loaded_date so scroll won't trigger history load
 
     def _get_date_group(self, dt: datetime) -> str:
         """Get the date group label for a datetime."""
@@ -699,12 +703,12 @@ class CalendarPanel(QWidget):
 
     def _on_scroll(self, value: int):
         """Handle scroll - load more history when near bottom."""
-        if self._loading_more:
-            return
-
-        scrollbar = self.meeting_list.verticalScrollBar()
-        if value >= scrollbar.maximum() - 50:  # Near bottom
-            self._load_more_history()
+        # Only load more history if we are NOT in today-only mode
+        # Since "Today" view is now strictly Today, we disable auto-loading history
+        # If we wanted infinite scroll back in history, we'd enable this.
+        # But per user request, Today view should be just Today.
+        # So we do nothing here.
+        pass
 
     def _load_initial_history(self, days: int) -> None:
         """Load multiple days of history in a single batch for better performance."""
