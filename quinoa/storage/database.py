@@ -149,6 +149,41 @@ class Database:
                 )
             """)
 
+            # FTS5 Search Table
+            conn.execute("""
+                CREATE VIRTUAL TABLE IF NOT EXISTS transcripts_fts USING fts5(
+                    recording_id UNINDEXED,
+                    text,
+                    summary
+                )
+            """)
+
+            # Triggers to keep FTS index updated
+            conn.execute("""
+                CREATE TRIGGER IF NOT EXISTS transcripts_ai AFTER INSERT ON transcripts BEGIN
+                  INSERT INTO transcripts_fts(recording_id, text, summary)
+                  VALUES (new.recording_id, new.text, new.summary);
+                END;
+            """)
+            conn.execute("""
+                CREATE TRIGGER IF NOT EXISTS transcripts_ad AFTER DELETE ON transcripts BEGIN
+                  DELETE FROM transcripts_fts WHERE recording_id = old.recording_id;
+                END;
+            """)
+            conn.execute("""
+                CREATE TRIGGER IF NOT EXISTS transcripts_au AFTER UPDATE ON transcripts BEGIN
+                  UPDATE transcripts_fts SET text = new.text, summary = new.summary
+                  WHERE recording_id = new.recording_id;
+                END;
+            """)
+
+            # Populate FTS if empty but transcripts exist (migration)
+            cursor = conn.execute("SELECT count(*) FROM transcripts_fts")
+            if cursor.fetchone()[0] == 0:
+                conn.execute(
+                    "INSERT INTO transcripts_fts(recording_id, text, summary) SELECT recording_id, text, summary FROM transcripts"
+                )
+
             # Chat history for AI assistant
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS chat_history (
@@ -341,6 +376,87 @@ class Database:
             cursor = conn.execute("SELECT * FROM transcripts WHERE recording_id = ?", (rec_id,))
             row = cursor.fetchone()
             return dict(row) if row else None
+
+    def search_transcripts(self, query: str) -> list[dict[str, Any]]:
+        """Search transcripts using FTS5 and title search."""
+        if not query or not query.strip():
+            return []
+
+        clean_query = query.replace('"', '""')
+        fts_query = f'"{clean_query}"'
+        like_query = f"%{query}%"
+
+        with self._conn() as conn:
+            conn.row_factory = sqlite3.Row
+
+            # FTS Search
+            cursor = conn.execute(
+                """
+                SELECT
+                    fts.recording_id,
+                    snippet(transcripts_fts, 1, '<b>', '</b>', '...', 32) as text_snippet,
+                    r.title,
+                    r.started_at,
+                    r.duration_seconds
+                FROM transcripts_fts fts
+                JOIN recordings r ON fts.recording_id = r.id
+                WHERE transcripts_fts MATCH ?
+                ORDER BY rank
+                LIMIT 50
+                """,
+                (fts_query,),
+            )
+            results = {row["recording_id"]: dict(row) for row in cursor.fetchall()}
+
+            # Title Search
+            cursor = conn.execute(
+                """
+                SELECT
+                    r.id as recording_id,
+                    r.title,
+                    r.started_at,
+                    r.duration_seconds
+                FROM recordings r
+                WHERE r.title LIKE ?
+                ORDER BY r.started_at DESC
+                LIMIT 50
+                """,
+                (like_query,),
+            )
+            results = {row["recording_id"]: dict(row) for row in cursor.fetchall()}
+
+            # Title Search
+            cursor = conn.execute(
+                """
+                SELECT
+                    r.id as recording_id,
+                    r.title,
+                    r.started_at,
+                    r.duration_seconds
+                FROM recordings r
+                WHERE r.title LIKE ?
+                ORDER BY r.started_at DESC
+                LIMIT 50
+                """,
+                (like_query,),
+            )
+
+            for row in cursor.fetchall():
+                rec_id = row["recording_id"]
+                if rec_id not in results:
+                    data = dict(row)
+                    data["text_snippet"] = None  # No text match, just title
+                    results[rec_id] = data
+
+            # Convert to list and sort
+            # Sort preference: Title match matches usually imply recent relevance?
+            # Or just sort by date?
+            # Let's sort by date for now
+            final_list = list(results.values())
+            # Basic sort by date descending
+            final_list.sort(key=lambda x: x["started_at"], reverse=True)
+
+            return final_list
 
     def save_speaker_names(self, rec_id: str, speaker_names: str) -> None:
         """Save speaker name mappings as JSON."""

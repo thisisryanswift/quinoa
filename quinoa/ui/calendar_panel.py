@@ -10,6 +10,7 @@ from PyQt6.QtWidgets import (
     QAbstractItemView,
     QHBoxLayout,
     QInputDialog,
+    QLabel,
     QLineEdit,
     QListWidget,
     QListWidgetItem,
@@ -150,8 +151,8 @@ class CalendarPanel(QWidget):
 
         # Search Bar
         self.search_bar = QLineEdit()
-        self.search_bar.setPlaceholderText("Filter meetings...")
-        self.search_bar.textChanged.connect(self._filter_history)
+        self.search_bar.setPlaceholderText("Search meetings or transcripts...")
+        self.search_bar.textChanged.connect(self._on_search_text_changed)
         history_layout.addWidget(self.search_bar)
 
         # Folder Tree
@@ -166,6 +167,19 @@ class CalendarPanel(QWidget):
         self.folder_tree.item_moved_to_folder.connect(self._on_item_moved_to_folder)
 
         history_layout.addWidget(self.folder_tree)
+
+        # Search Results List (Hidden by default)
+        self.search_results_list = QListWidget()
+        self.search_results_list.setWordWrap(True)
+        self.search_results_list.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+        self.search_results_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.search_results_list.setStyleSheet(
+            "QListWidget { background: transparent; border: none; }"
+        )
+        self.search_results_list.itemClicked.connect(self._on_search_result_clicked)
+        self.search_results_list.setVisible(False)
+        history_layout.addWidget(self.search_results_list)
+
         self.view_stack.addWidget(self.history_page)
 
         # Buttons Layout
@@ -475,12 +489,91 @@ class CalendarPanel(QWidget):
         except Exception as e:
             logger.error("Error refreshing folder tree: %s", e)
 
-    def _filter_history(self, text: str):
-        """Filter the history tree."""
+    def _on_search_text_changed(self, text: str):
+        """Handle search text change."""
         search_text = text.lower().strip()
-        root = self.folder_tree.invisibleRootItem()
-        for i in range(root.childCount()):
-            self._filter_recursive(root.child(i), search_text)
+
+        if not search_text:
+            self.folder_tree.setVisible(True)
+            self.search_results_list.setVisible(False)
+            self.new_folder_btn.setVisible(True)
+            # Reset tree visibility
+            root = self.folder_tree.invisibleRootItem()
+            for i in range(root.childCount()):
+                self._filter_recursive(root.child(i), "")
+            return
+
+        self.new_folder_btn.setVisible(False)
+        self.folder_tree.setVisible(False)
+        self.search_results_list.setVisible(True)
+        self.search_results_list.clear()
+
+        # 1. Title Matches (from loaded tree data or DB? DB is better for global search)
+        # Using DB for consistency with FTS
+        # But we need recording titles.
+        # Let's assume FTS handles title search if we added title to FTS index?
+        # We didn't. We only added text/summary.
+        # So we should query recordings by title LIKE %query%
+
+        # We can implement a unified search method in DB or do it here.
+        # Doing it here requires two DB calls.
+
+        # Search FTS
+        fts_results = self.db.search_transcripts(search_text)
+
+        # TODO: Search titles too
+
+        if not fts_results:
+            item = QListWidgetItem("No results found.")
+            item.setFlags(Qt.ItemFlag.NoItemFlags)
+            self.search_results_list.addItem(item)
+            return
+
+        for res in fts_results:
+            self._add_search_result_item(res)
+
+    def _add_search_result_item(self, res: dict):
+        """Add a search result item to the list."""
+        rec_id = res["recording_id"]
+        title = res["title"]
+        snippet = res["text_snippet"]
+
+        try:
+            dt = datetime.fromisoformat(res["started_at"])
+            date_str = dt.strftime("%b %d, %Y")
+        except (ValueError, TypeError):
+            date_str = ""
+
+        # Create widget for rich text
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(2)
+
+        # Header: Title + Date
+        header_lbl = QLabel(f"<b>{title}</b> <span style='color: #888;'>{date_str}</span>")
+        header_lbl.setTextFormat(Qt.TextFormat.RichText)
+        layout.addWidget(header_lbl)
+
+        # Snippet
+        if snippet:
+            snippet_lbl = QLabel(f"<span style='color: #ccc;'>...{snippet}...</span>")
+            snippet_lbl.setTextFormat(Qt.TextFormat.RichText)
+            snippet_lbl.setWordWrap(True)
+            layout.addWidget(snippet_lbl)
+
+        # Add to list
+        item = QListWidgetItem(self.search_results_list)
+        item.setSizeHint(widget.sizeHint())
+        item.setData(Qt.ItemDataRole.UserRole, rec_id)
+        self.search_results_list.addItem(item)
+        self.search_results_list.setItemWidget(item, widget)
+
+    def _on_search_result_clicked(self, item: QListWidgetItem):
+        """Handle click on search result."""
+        rec_id = item.data(Qt.ItemDataRole.UserRole)
+        if rec_id:
+            self.recording_selected.emit(rec_id)
 
     def _filter_recursive(self, item: QTreeWidgetItem, text: str) -> bool:
         """Recursively filter tree items."""
