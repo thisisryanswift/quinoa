@@ -536,7 +536,8 @@ class CalendarPanel(QWidget):
         """Add a search result item to the list."""
         rec_id = res["recording_id"]
         title = res["title"]
-        snippet = res["text_snippet"]
+        # Snippet might be missing if it was a title-only match
+        snippet = res.get("text_snippet")
 
         try:
             dt = datetime.fromisoformat(res["started_at"])
