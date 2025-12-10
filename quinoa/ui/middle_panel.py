@@ -48,6 +48,7 @@ from quinoa.constants import (
     ViewType,
 )
 from quinoa.storage.database import Database
+from quinoa.ui.audio_player import AudioPlayer
 from quinoa.ui.calendar_panel import get_meeting_platform
 from quinoa.ui.enhance_worker import EnhanceWorker
 from quinoa.ui.rich_text_editor import RichTextEditor
@@ -67,6 +68,7 @@ from quinoa.ui.transcript_handler import (
     utterances_from_json,
     utterances_to_json,
 )
+from quinoa.ui.audio_player import AudioPlayer
 from quinoa.ui.transcript_view import TranscriptView
 
 logger = logging.getLogger("quinoa")
@@ -280,6 +282,11 @@ class MiddlePanel(QWidget):
         self.suggestion_banner = self._create_suggestion_banner()
         self.suggestion_banner.setVisible(False)
         layout.addWidget(self.suggestion_banner)
+
+        # Audio Player (visible when viewing a meeting)
+        self.audio_player = AudioPlayer()
+        self.audio_player.setVisible(False)
+        layout.addWidget(self.audio_player)
 
         # Content area (stacked widget for notes/transcript)
         self.content_stack = QStackedWidget()
@@ -1011,6 +1018,11 @@ class MiddlePanel(QWidget):
             # Don't switch while recording
             return
 
+        # Fetch recording data first
+        rec = self.db.get_recording(rec_id)
+        if not rec:
+            return
+
         # Save any pending notes from previous view
         if self._mode == PanelMode.VIEWING and self._current_view == ViewType.NOTES:
             self._save_current_notes()
@@ -1020,19 +1032,9 @@ class MiddlePanel(QWidget):
         self._mode = PanelMode.VIEWING
 
         # Check for smart suggestions
-        rec = self.db.get_recording(rec_id)
-        if rec:
-            # Check if this recording is linked to an event
-            # We can't easily get the event from recording ID directly without a reverse query
-            # or fetching the event if we knew the ID.
-            # But wait, recordings don't store event_id. Calendar events store recording_id.
-            # So we query calendar_events where recording_id = rec_id.
-
-            # This is a bit inefficient if we do it every time, but acceptable for now.
-            # We need a db method for this.
-            pass
-            # I'll implement _check_folder_suggestion to handle this lookup.
-            self._check_folder_suggestion(rec, is_recording=True)
+        # Check if this recording is linked to an event
+        # I'll implement _check_folder_suggestion to handle this lookup.
+        self._check_folder_suggestion(rec, is_recording=True)
 
         # Enable all tabs
         self.transcript_btn.setEnabled(True)
@@ -1073,6 +1075,19 @@ class MiddlePanel(QWidget):
         self._update_meeting_header(rec_id)
         self._update_speaker_chips()
         self.meeting_header.setVisible(True)
+
+        # Load audio
+        # Try stereo path first, then mic path
+        audio_path = rec.get("stereo_path")
+        if not audio_path or not os.path.exists(audio_path):
+            audio_path = rec.get("mic_path")
+
+        if audio_path and os.path.exists(audio_path):
+            self.audio_player.load_audio(audio_path)
+            self.audio_player.setVisible(True)
+        else:
+            self.audio_player.stop()
+            self.audio_player.setVisible(False)
 
         # Hide recording controls, show view selector
         self.recording_controls_container.setVisible(False)
@@ -1218,6 +1233,8 @@ class MiddlePanel(QWidget):
         self.view_selector_widget.setVisible(False)
         self.meeting_header.setVisible(False)
         self.recording_controls_container.setVisible(True)
+        self.audio_player.stop()
+        self.audio_player.setVisible(False)
 
         self._set_notes_text("")
         self.transcript_viewer.clear()
