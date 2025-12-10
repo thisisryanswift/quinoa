@@ -1,11 +1,10 @@
+import logging
 import os
 import sqlite3
-import threading
-from collections.abc import Generator
-from contextlib import contextmanager
-from datetime import datetime
-from pathlib import Path
+from datetime import datetime, timedelta
 from typing import Any
+
+logger = logging.getLogger("quinoa")
 
 
 class Database:
@@ -386,13 +385,15 @@ class Database:
         fts_query = f'"{clean_query}"'
         like_query = f"%{query}%"
 
+        logger.info(f"Searching transcripts for: '{query}' (FTS: '{fts_query}')")
+
         with self._conn() as conn:
             conn.row_factory = sqlite3.Row
 
             # FTS Search
             cursor = conn.execute(
                 """
-                SELECT
+                SELECT 
                     fts.recording_id,
                     snippet(transcripts_fts, 1, '<b>', '</b>', '...', 32) as text_snippet,
                     r.title,
@@ -407,6 +408,7 @@ class Database:
                 (fts_query,),
             )
             results = {row["recording_id"]: dict(row) for row in cursor.fetchall()}
+            logger.info(f"FTS found {len(results)} matches")
 
             # Title Search
             cursor = conn.execute(
@@ -423,38 +425,13 @@ class Database:
                 """,
                 (like_query,),
             )
-            results = {row["recording_id"]: dict(row) for row in cursor.fetchall()}
 
-            # Title Search
-            cursor = conn.execute(
-                """
-                SELECT
-                    r.id as recording_id,
-                    r.title,
-                    r.started_at,
-                    r.duration_seconds
-                FROM recordings r
-                WHERE r.title LIKE ?
-                ORDER BY r.started_at DESC
-                LIMIT 50
-                """,
-                (like_query,),
-            )
-
-            for row in cursor.fetchall():
-                rec_id = row["recording_id"]
-                if rec_id not in results:
-                    data = dict(row)
-                    data["text_snippet"] = None  # No text match, just title
-                    results[rec_id] = data
+            logger.info(f"Title search added {title_matches} unique matches")
 
             # Convert to list and sort
-            # Sort preference: Title match matches usually imply recent relevance?
-            # Or just sort by date?
-            # Let's sort by date for now
             final_list = list(results.values())
             # Basic sort by date descending
-            final_list.sort(key=lambda x: x["started_at"], reverse=True)
+            final_list.sort(key=lambda x: x["started_at"] or "", reverse=True)
 
             return final_list
 
@@ -763,7 +740,6 @@ class Database:
 
     def get_current_meeting(self, buffer_minutes: int = 10) -> dict[str, Any] | None:
         """Find a meeting happening now (within buffer window)."""
-        from datetime import timedelta
 
         now = datetime.now()
         window_start = now - timedelta(minutes=buffer_minutes)
