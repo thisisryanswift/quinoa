@@ -443,8 +443,25 @@ class CalendarPanel(QWidget):
 
             # Add Recordings
             for rec in recordings:
+                # Get recording details to add indicators
+                rec_id = rec["id"]
+                has_notes = bool(rec.get("notes"))
+
+                # Check for transcript
+                transcript = self.db.get_transcript(rec_id)
+                has_transcript = bool(transcript)
+
+                # Build indicator suffix
+                indicators = []
+                if has_notes:
+                    indicators.append("📝")
+                if has_transcript:
+                    indicators.append("💬")
+
+                indicator_str = " " + " ".join(indicators) if indicators else ""
+
                 item = create_tree_item(
-                    rec["title"],
+                    rec["title"] + indicator_str,
                     rec["started_at"],
                     rec["id"],
                     ITEM_TYPE_RECORDING,
