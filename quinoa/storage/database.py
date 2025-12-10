@@ -431,6 +431,15 @@ class Database:
                 (like_query,),
             )
 
+            title_matches = 0
+            for row in cursor.fetchall():
+                rec_id = row["recording_id"]
+                if rec_id not in results:
+                    data = dict(row)
+                    data["text_snippet"] = None  # No text match, just title
+                    results[rec_id] = data
+                    title_matches += 1
+
             logger.info(f"Title search added {title_matches} unique matches")
 
             # Convert to list and sort
