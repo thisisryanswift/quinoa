@@ -1086,8 +1086,8 @@ class MiddlePanel(QWidget):
             self.audio_player.load_audio(audio_path)
             self.audio_player.setVisible(True)
         else:
-            self.audio_player.stop()
-            self.audio_player.setVisible(False)
+            self.audio_player.set_error("Audio file not found")
+            self.audio_player.setVisible(True)
 
         # Hide recording controls, show view selector
         self.recording_controls_container.setVisible(False)

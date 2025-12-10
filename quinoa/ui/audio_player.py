@@ -165,6 +165,13 @@ class AudioPlayer(QFrame):
         self.player.setPlaybackRate(rate)
         self.speed_btn.setText(f"{rate}x")
 
+    def set_error(self, message: str):
+        """Set error state."""
+        self.stop()
+        self.play_btn.setEnabled(False)
+        self.slider.setEnabled(False)
+        self.time_label.setText(message)
+
     def _on_state_changed(self, state):
         style = self.style()
         if not style:
