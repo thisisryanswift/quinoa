@@ -22,6 +22,8 @@ from PyQt6.QtWidgets import (
     QTreeWidgetItem,
     QVBoxLayout,
     QWidget,
+    QHeaderView,
+    QStyle,
 )
 
 from quinoa.calendar import is_authenticated
@@ -158,6 +160,11 @@ class CalendarPanel(QWidget):
         # Folder Tree
         self.folder_tree = FolderTree()
         self.folder_tree.setHeaderHidden(True)
+        self.folder_tree.setColumnCount(3)
+        self.folder_tree.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        self.folder_tree.header().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        self.folder_tree.header().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+
         self.folder_tree.setDragEnabled(True)
         self.folder_tree.setAcceptDrops(True)
         self.folder_tree.setDragDropMode(QAbstractItemView.DragDropMode.InternalMove)
@@ -416,7 +423,29 @@ class CalendarPanel(QWidget):
                     time_str = ""
 
                 display_text = f"{title} ({time_str})"
-                item = QTreeWidgetItem([display_text])
+                item = QTreeWidgetItem([display_text, "", ""])
+
+                # Add icons if it's a recording
+                if item_type == ITEM_TYPE_RECORDING:
+                    rec = self.db.get_recording(item_id)
+                    if rec:
+                        style = self.style()
+                        if style:
+                            if rec.get("notes"):
+                                item.setIcon(
+                                    1, style.standardIcon(QStyle.StandardPixmap.SP_FileIcon)
+                                )
+                                item.setToolTip(1, "Has notes")
+
+                            transcript = self.db.get_transcript(item_id)
+                            if transcript:
+                                item.setIcon(
+                                    2,
+                                    style.standardIcon(
+                                        QStyle.StandardPixmap.SP_MessageBoxInformation
+                                    ),
+                                )
+                                item.setToolTip(2, "Has transcript")
 
                 if item_type == ITEM_TYPE_RECORDING:
                     item.setData(0, Qt.ItemDataRole.UserRole, f"rec:{item_id}")
@@ -443,25 +472,14 @@ class CalendarPanel(QWidget):
 
             # Add Recordings
             for rec in recordings:
-                # Get recording details to add indicators
-                rec_id = rec["id"]
-                has_notes = bool(rec.get("notes"))
+                # Helper uses rec dict, so we can't easily reuse it as-is for the column logic
+                # unless we update create_tree_item.
+                # But create_tree_item is generic for events too.
+                # Let's pass the 'rec' dict to create_tree_item optionally or handle it inside.
 
-                # Check for transcript
-                transcript = self.db.get_transcript(rec_id)
-                has_transcript = bool(transcript)
-
-                # Build indicator suffix
-                indicators = []
-                if has_notes:
-                    indicators.append("📝")
-                if has_transcript:
-                    indicators.append("💬")
-
-                indicator_str = " " + " ".join(indicators) if indicators else ""
-
+                # Refactor create_tree_item to accept 'data_dict' for extra info
                 item = create_tree_item(
-                    rec["title"] + indicator_str,
+                    rec["title"],
                     rec["started_at"],
                     rec["id"],
                     ITEM_TYPE_RECORDING,
@@ -625,6 +643,7 @@ class CalendarPanel(QWidget):
 
     def _on_tree_item_clicked(self, item: QTreeWidgetItem, column: int):
         """Handle tree selection."""
+        # Get data from column 0 (which stores the ID)
         data = item.data(0, Qt.ItemDataRole.UserRole)
         if not data:
             return
