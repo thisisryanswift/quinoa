@@ -1144,8 +1144,13 @@ class MiddlePanel(QWidget):
             # Usually series title is same as event title.
             series_title = event["title"]
 
+            # Escape HTML characters for the label
+            import html
+
+            safe_title = html.escape(series_title)
+
             self.suggestion_label.setText(
-                f"This appears to be a recurring meeting. Create a folder for <b>{series_title}</b>?"
+                f"This appears to be a recurring meeting. Create a folder for <b>{safe_title}</b>?"
             )
             self.suggestion_action_btn.setText("Create Folder")
 
