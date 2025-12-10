@@ -201,6 +201,29 @@ class Database:
                 ON calendar_events(recording_id)
             """)
 
+    def get_all_past_calendar_events(self) -> list[dict[str, Any]]:
+        """Get all past calendar events (for history view)."""
+        now = datetime.now()
+        with self._conn() as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute(
+                """
+                SELECT
+                    ce.*,
+                    r.id as rec_id,
+                    r.title as rec_title,
+                    r.duration_seconds as rec_duration,
+                    r.status as rec_status
+                FROM calendar_events ce
+                LEFT JOIN recordings r ON ce.recording_id = r.id
+                WHERE ce.start_time < ?
+                  AND (ce.hidden IS NULL OR ce.hidden = 0)
+                ORDER BY ce.start_time DESC
+                """,
+                (now,),
+            )
+            return [dict(row) for row in cursor.fetchall()]
+
     def add_recording(
         self,
         rec_id: str,

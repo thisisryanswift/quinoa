@@ -356,6 +356,11 @@ class CalendarPanel(QWidget):
             folders = self.db.get_folders()
             recordings = self.db.get_recordings()
 
+            # Fetch past calendar events to fill in gaps (unrecorded meetings)
+            past_events = []
+            if is_authenticated():
+                past_events = self.db.get_all_past_calendar_events()
+
             # Build folder map
             folder_map: dict[str, QTreeWidgetItem] = {}
 
@@ -380,39 +385,86 @@ class CalendarPanel(QWidget):
                     root.addChild(item)
                 item.setExpanded(True)  # Expand by default for now
 
-            # 2. Add Recordings
+            # 2. Add Items (Recordings + Unrecorded Events)
             uncategorized_item = QTreeWidgetItem(["Uncategorized"])
             uncategorized_item.setData(0, Qt.ItemDataRole.UserRole, "folder:uncategorized")
             uncategorized_item.setFlags(uncategorized_item.flags() | Qt.ItemFlag.ItemIsDropEnabled)
             has_uncategorized = False
 
-            for rec in recordings:
-                # Format text
-                ts = rec["started_at"]
+            # Helper to create tree item
+            def create_tree_item(title, timestamp, item_id, item_type, folder_id):
+                nonlocal has_uncategorized
+
                 try:
-                    dt = datetime.fromisoformat(ts)
+                    dt = datetime.fromisoformat(str(timestamp))
                     time_str = dt.strftime("%b %d %I:%M %p").lstrip("0")
                 except (ValueError, TypeError):
                     time_str = ""
 
-                title = f"{rec['title']} ({time_str})"
-                item = QTreeWidgetItem([title])
-                item.setData(0, Qt.ItemDataRole.UserRole, f"rec:{rec['id']}")
+                display_text = f"{title} ({time_str})"
+                item = QTreeWidgetItem([display_text])
+
+                if item_type == ITEM_TYPE_RECORDING:
+                    item.setData(0, Qt.ItemDataRole.UserRole, f"rec:{item_id}")
+                else:
+                    item.setData(0, Qt.ItemDataRole.UserRole, f"event:{item_id}")
+
                 item.setFlags(
                     Qt.ItemFlag.ItemIsSelectable
                     | Qt.ItemFlag.ItemIsEnabled
                     | Qt.ItemFlag.ItemIsDragEnabled
                 )
 
-                folder_id = rec.get("folder_id")
                 if folder_id and folder_id in folder_map:
                     folder_map[folder_id].addChild(item)
                 else:
                     uncategorized_item.addChild(item)
                     has_uncategorized = True
 
+                return item
+
+            # Track added IDs to avoid duplicates
+            # (Recordings take precedence over calendar events)
+            added_recording_ids = set()
+
+            # Add Recordings
+            for rec in recordings:
+                item = create_tree_item(
+                    rec["title"],
+                    rec["started_at"],
+                    rec["id"],
+                    ITEM_TYPE_RECORDING,
+                    rec.get("folder_id"),
+                )
+                added_recording_ids.add(rec["id"])
+
                 # Restore selection
-                if rec["id"] == current_selection:
+                if rec["id"] == current_selection and self._selected_type == ITEM_TYPE_RECORDING:
+                    item.setSelected(True)
+                    self.folder_tree.setCurrentItem(item)
+
+            # Add Unrecorded Past Events
+            for event in past_events:
+                # If event is linked to a recording we already added, skip it
+                if event.get("rec_id") and event["rec_id"] in added_recording_ids:
+                    continue
+
+                # Use calendar event folder_id if available
+                folder_id = event.get("folder_id")
+
+                item = create_tree_item(
+                    event["title"],
+                    event["start_time"],
+                    event["event_id"],
+                    ITEM_TYPE_CALENDAR_EVENT,
+                    folder_id,
+                )
+
+                # Restore selection
+                if (
+                    event["event_id"] == current_selection
+                    and self._selected_type == ITEM_TYPE_CALENDAR_EVENT
+                ):
                     item.setSelected(True)
                     self.folder_tree.setCurrentItem(item)
 
@@ -471,6 +523,11 @@ class CalendarPanel(QWidget):
             self._selected_id = rec_id
             self._selected_type = ITEM_TYPE_RECORDING
             self.recording_selected.emit(rec_id)
+        elif data.startswith("event:"):
+            event_id = data.split(":", 1)[1]
+            self._selected_id = event_id
+            self._selected_type = ITEM_TYPE_CALENDAR_EVENT
+            self.meeting_selected.emit(event_id)
         else:
             # Folder clicked
             pass
@@ -513,6 +570,32 @@ class CalendarPanel(QWidget):
             delete_action.triggered.connect(lambda: self._delete_recording_from_tree(item))
             menu.addAction(delete_action)
 
+        elif data.startswith("event:"):
+            event_id = data.split(":", 1)[1]
+
+            # Move to folder submenu (for events)
+            move_menu = menu.addMenu("Move to Folder")
+            folders = self.db.get_folders()
+
+            # Add Uncategorized option
+            uncat_action = QAction("Uncategorized", self)
+            uncat_action.triggered.connect(lambda: self._move_calendar_event(event_id, None))
+            move_menu.addAction(uncat_action)
+            move_menu.addSeparator()
+
+            for folder in folders:
+                action = QAction(folder["name"], self)
+                action.triggered.connect(
+                    lambda f=folder: self._move_calendar_event(event_id, f["id"])
+                )
+                move_menu.addAction(action)
+
+            menu.addSeparator()
+
+            hide_action = QAction("Hide from list", self)
+            hide_action.triggered.connect(lambda: self._hide_calendar_event(event_id, item.text(0)))
+            menu.addAction(hide_action)
+
         elif data.startswith("folder:"):
             if data == "folder:uncategorized":
                 return  # Cannot modify uncategorized
@@ -528,6 +611,14 @@ class CalendarPanel(QWidget):
             menu.addAction(delete_action)
 
         menu.exec(self.folder_tree.viewport().mapToGlobal(position))
+
+    def _move_calendar_event(self, event_id: str, folder_id: str | None):
+        """Move a calendar event to a folder."""
+        try:
+            self.db.set_calendar_event_folder(event_id, folder_id)
+            self._refresh_history_tree()
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to move event: {e}")
 
     def _create_folder(self):
         name, ok = QInputDialog.getText(self, "New Folder", "Folder Name:")
