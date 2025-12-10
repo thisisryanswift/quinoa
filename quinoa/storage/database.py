@@ -192,6 +192,9 @@ class Database:
                 conn.execute(
                     "ALTER TABLE calendar_events ADD COLUMN folder_id TEXT REFERENCES meeting_folders(id)"
                 )
+            if "recurring_event_id" not in columns:
+                conn.execute("ALTER TABLE calendar_events ADD COLUMN recurring_event_id TEXT")
+
             conn.execute("""
                 CREATE INDEX IF NOT EXISTS idx_calendar_events_start
                 ON calendar_events(start_time)
@@ -199,6 +202,10 @@ class Database:
             conn.execute("""
                 CREATE INDEX IF NOT EXISTS idx_calendar_events_recording
                 ON calendar_events(recording_id)
+            """)
+            conn.execute("""
+                CREATE INDEX IF NOT EXISTS idx_calendar_events_recurring
+                ON calendar_events(recurring_event_id)
             """)
 
     def get_all_past_calendar_events(self) -> list[dict[str, Any]]:
@@ -553,8 +560,8 @@ class Database:
                     """
                     INSERT INTO calendar_events
                         (event_id, calendar_id, title, start_time, end_time,
-                         meet_link, attendees, organizer_email, etag, synced_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                         meet_link, attendees, organizer_email, etag, synced_at, recurring_event_id)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(event_id) DO UPDATE SET
                         calendar_id = excluded.calendar_id,
                         title = excluded.title,
@@ -565,6 +572,7 @@ class Database:
                         organizer_email = excluded.organizer_email,
                         etag = excluded.etag,
                         synced_at = excluded.synced_at,
+                        recurring_event_id = excluded.recurring_event_id,
                         hidden = COALESCE(calendar_events.hidden, 0)
                     """,
                     (
@@ -578,6 +586,7 @@ class Database:
                         event.get("organizer_email"),
                         event.get("etag"),
                         datetime.now(),
+                        event.get("recurring_event_id"),
                     ),
                 )
                 total_changes += conn.total_changes
@@ -772,6 +781,16 @@ class Database:
             )
             # Delete the folder
             conn.execute("DELETE FROM meeting_folders WHERE id = ?", (folder_id,))
+
+    def get_folder_by_recurring_id(self, recurring_id: str) -> dict[str, Any] | None:
+        """Find a folder linked to a recurring event series."""
+        with self._conn() as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute(
+                "SELECT * FROM meeting_folders WHERE recurring_event_id = ?", (recurring_id,)
+            )
+            row = cursor.fetchone()
+            return dict(row) if row else None
 
     def get_folders(self) -> list[dict[str, Any]]:
         """Get all folders ordered by sort_order and name."""

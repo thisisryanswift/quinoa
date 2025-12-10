@@ -1,5 +1,6 @@
 """Middle panel - Notes editor, transcript viewer, and recording controls."""
 
+import contextlib
 import json
 import logging
 import os
@@ -275,6 +276,11 @@ class MiddlePanel(QWidget):
         self.meeting_header.setVisible(False)
         layout.addWidget(self.meeting_header)
 
+        # Suggestion banner
+        self.suggestion_banner = self._create_suggestion_banner()
+        self.suggestion_banner.setVisible(False)
+        layout.addWidget(self.suggestion_banner)
+
         # Content area (stacked widget for notes/transcript)
         self.content_stack = QStackedWidget()
 
@@ -365,6 +371,52 @@ class MiddlePanel(QWidget):
         self.speaker_chips_container.setVisible(False)
 
         return widget
+
+    def _create_suggestion_banner(self) -> QFrame:
+        """Create a banner for suggesting actions (e.g. create folder)."""
+        banner = QFrame()
+        banner.setObjectName("suggestionBanner")
+        banner.setStyleSheet("""
+            QFrame#suggestionBanner {
+                background-color: #2d3e50;
+                border: 1px solid #4a9eff;
+                border-radius: 4px;
+            }
+            QLabel {
+                color: #e0e0e0;
+            }
+        """)
+        layout = QHBoxLayout(banner)
+        layout.setContentsMargins(12, 8, 12, 8)
+
+        self.suggestion_label = QLabel()
+        layout.addWidget(self.suggestion_label, stretch=1)
+
+        self.suggestion_action_btn = QPushButton()
+        self.suggestion_action_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.suggestion_action_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #4a9eff;
+                color: white;
+                border: none;
+                border-radius: 3px;
+                padding: 4px 12px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #3b8ce0;
+            }
+        """)
+        layout.addWidget(self.suggestion_action_btn)
+
+        close_btn = QPushButton("✕")
+        close_btn.setFlat(True)
+        close_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        close_btn.setStyleSheet("color: #aaa; font-weight: bold;")
+        close_btn.clicked.connect(lambda: banner.setVisible(False))
+        layout.addWidget(close_btn)
+
+        return banner
 
     def _update_meeting_header(self, rec_id: str) -> None:
         """Update the meeting header with recording info."""
@@ -860,6 +912,10 @@ class MiddlePanel(QWidget):
         self._viewing_rec_id = None
         self._viewing_event_id = event_id
         self._mode = PanelMode.VIEWING
+
+        # Check for smart suggestions
+        self._check_folder_suggestion(event, is_recording=False)
+
         self._cached_notes = ""
         self._cached_transcript = ""
         self._cached_enhanced = ""
@@ -963,6 +1019,21 @@ class MiddlePanel(QWidget):
         self._viewing_event_id = None
         self._mode = PanelMode.VIEWING
 
+        # Check for smart suggestions
+        rec = self.db.get_recording(rec_id)
+        if rec:
+            # Check if this recording is linked to an event
+            # We can't easily get the event from recording ID directly without a reverse query
+            # or fetching the event if we knew the ID.
+            # But wait, recordings don't store event_id. Calendar events store recording_id.
+            # So we query calendar_events where recording_id = rec_id.
+
+            # This is a bit inefficient if we do it every time, but acceptable for now.
+            # We need a db method for this.
+            pass
+            # I'll implement _check_folder_suggestion to handle this lookup.
+            self._check_folder_suggestion(rec, is_recording=True)
+
         # Enable all tabs
         self.transcript_btn.setEnabled(True)
         self.enhanced_btn.setEnabled(True)
@@ -1014,6 +1085,108 @@ class MiddlePanel(QWidget):
 
         self.transcribe_btn.setEnabled(True)
         self._update_view_content()
+
+    def _check_folder_suggestion(self, item: dict, is_recording: bool):
+        """Check if we should suggest creating a folder for this item."""
+        self.suggestion_banner.setVisible(False)
+
+        # We need recurring_event_id.
+        recurring_id = None
+        event = None
+
+        if is_recording:
+            # Need to find linked event
+            # We can use db.get_calendar_events with a wide range, but that's slow.
+            # Better to add a method to DB to get event by recording_id.
+            # For now, let's just implement that method in DB or execute raw query here?
+            # Accessing DB raw here is okay since we have self.db
+            with self.db._conn() as conn:
+                cursor = conn.execute(
+                    "SELECT * FROM calendar_events WHERE recording_id = ?", (item["id"],)
+                )
+                row = cursor.fetchone()
+                if row:
+                    event = dict(row)
+        else:
+            event = item
+
+        if not event:
+            return
+
+        recurring_id = event.get("recurring_event_id")
+        if not recurring_id:
+            return
+
+        # Check if item is already in a folder
+        current_folder_id = item.get("folder_id")
+        # If it's a recording, check if the EVENT has a folder too?
+        # Usually we sync them. But let's check the item itself first.
+
+        # If already folderized, check if it matches the series folder?
+        # Actually, if it's already in a folder, we assume the user is happy.
+        if current_folder_id:
+            return
+
+        # Check if a folder already exists for this series
+        existing_folder = self.db.get_folder_by_recurring_id(recurring_id)
+
+        if existing_folder:
+            # Folder exists, suggest moving to it?
+            # "This meeting belongs to 'Folder Name'. Move it there?"
+            # For now, let's implement the creation suggestion as requested.
+            # If folder exists, we could auto-move or suggest moving.
+            # Let's focus on CREATION first as per user request.
+            # If folder exists, we might want to suppress suggestion or suggest move.
+            pass
+        else:
+            # No folder exists. Suggest creating one.
+            # Use event title as default name, but strip " (recurrence)" or similar?
+            # Usually series title is same as event title.
+            series_title = event["title"]
+
+            self.suggestion_label.setText(
+                f"This appears to be a recurring meeting. Create a folder for <b>{series_title}</b>?"
+            )
+            self.suggestion_action_btn.setText("Create Folder")
+
+            # Disconnect previous connections
+            with contextlib.suppress(TypeError):
+                self.suggestion_action_btn.clicked.disconnect()
+
+            self.suggestion_action_btn.clicked.connect(
+                lambda: self._create_series_folder(recurring_id, series_title, item, is_recording)
+            )
+            self.suggestion_banner.setVisible(True)
+
+    def _create_series_folder(self, recurring_id: str, name: str, item: dict, is_recording: bool):
+        """Create a folder for the series and move current item into it."""
+        import uuid
+
+        folder_id = str(uuid.uuid4())
+
+        try:
+            # Create folder
+            self.db.create_folder(folder_id, name, recurring_event_id=recurring_id)
+
+            # Move current item
+            if is_recording:
+                self.db.set_recording_folder(item["id"], folder_id)
+            else:
+                self.db.set_calendar_event_folder(item["event_id"], folder_id)
+
+            # Hide banner
+            self.suggestion_banner.setVisible(False)
+
+            # Notify history to refresh
+            if self.on_history_changed:
+                self.on_history_changed()
+
+            QMessageBox.information(
+                self, "Folder Created", f"Created folder '{name}' and moved this meeting into it."
+            )
+
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to create folder: {e}")
 
     def clear_view(self):
         """Clear the view and return to idle mode."""

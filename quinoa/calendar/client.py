@@ -139,6 +139,7 @@ class CalendarClient:
             "attendees": json.dumps(attendees) if attendees else None,
             "organizer_email": event.get("organizer", {}).get("email"),
             "etag": event.get("etag"),
+            "recurring_event_id": event.get("recurringEventId"),
         }
 
     def _extract_meet_link(self, event: dict) -> str | None:
