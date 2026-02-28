@@ -32,7 +32,7 @@ env/
 Thumbs.db
 
 # Project specific
-opencode.json
+
 .env
 context.md
 secrets.json
