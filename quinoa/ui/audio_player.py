@@ -1,20 +1,20 @@
 """Audio player widget for playback controls."""
 
-from PyQt6.QtCore import Qt, QUrl, QTime
+from PyQt6.QtCore import Qt, QTime, QUrl
+from PyQt6.QtGui import QAction
 from PyQt6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PyQt6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
+    QMenu,
     QPushButton,
     QSlider,
     QStyle,
     QToolButton,
     QVBoxLayout,
     QWidget,
-    QMenu,
 )
-from PyQt6.QtGui import QAction
 
 
 class AudioPlayer(QFrame):
@@ -87,15 +87,15 @@ class AudioPlayer(QFrame):
         if style:
             self.play_btn.setIcon(style.standardIcon(QStyle.StandardPixmap.SP_MediaPlay))
         self.play_btn.clicked.connect(self.toggle_playback)
-        self.play_btn.setStyleSheet(f"""
-            QPushButton {{
+        self.play_btn.setStyleSheet("""
+            QPushButton {
                 background-color: #4a9eff;
                 border-radius: 16px;
                 border: none;
-            }}
-            QPushButton:hover {{
+            }
+            QPushButton:hover {
                 background-color: #3b8ce0;
-            }}
+            }
         """)
         controls_layout.addWidget(self.play_btn)
 

@@ -1,7 +1,7 @@
 """Chat-bubble style transcript viewer with speaker editing."""
 
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QAction
+from PyQt6.QtGui import QAction, QMouseEvent
 from PyQt6.QtWidgets import (
     QFrame,
     QInputDialog,
@@ -12,7 +12,19 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+
 from quinoa.ui.styles import SPEAKER_COLORS
+
+
+class ClickableLabel(QLabel):
+    """A label that emits a clicked signal on mouse press."""
+
+    clicked = pyqtSignal(QMouseEvent)
+
+    def mousePressEvent(self, ev: QMouseEvent | None) -> None:
+        if ev:
+            self.clicked.emit(ev)
+        super().mousePressEvent(ev)
 
 
 class UtteranceBubble(QFrame):
@@ -42,7 +54,7 @@ class UtteranceBubble(QFrame):
         layout.setSpacing(4)
 
         # Speaker label (clickable)
-        self.speaker_label = QLabel(f"▼ {speaker}")
+        self.speaker_label = ClickableLabel(f"▼ {speaker}")
         self.speaker_label.setStyleSheet(f"""
             QLabel {{
                 color: {color};
@@ -54,8 +66,8 @@ class UtteranceBubble(QFrame):
             }}
         """)
         self.speaker_label.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.speaker_label.mousePressEvent = lambda e: self.speaker_clicked.emit(
-            self.speaker, self.index
+        self.speaker_label.clicked.connect(
+            lambda _e: self.speaker_clicked.emit(self.speaker, self.index)
         )
         layout.addWidget(self.speaker_label)
 

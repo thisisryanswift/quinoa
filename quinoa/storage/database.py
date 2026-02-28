@@ -2,12 +2,11 @@ import logging
 import os
 import sqlite3
 import threading
+from collections.abc import Generator
 from contextlib import contextmanager
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Generator
-
-from platformdirs import user_data_dir
+from typing import Any
 
 logger = logging.getLogger("quinoa")
 
@@ -339,19 +338,6 @@ class Database:
                     (stereo_path, rec_id),
                 )
 
-    def update_recording_paths(
-        self,
-        rec_id: str,
-        stereo_path: str | None = None,
-    ) -> None:
-        """Update paths for a recording."""
-        with self._conn() as conn:
-            if stereo_path:
-                conn.execute(
-                    "UPDATE recordings SET stereo_path = ? WHERE id = ?",
-                    (stereo_path, rec_id),
-                )
-
     def update_recording_title(self, rec_id: str, title: str) -> None:
         with self._conn() as conn:
             conn.execute(
@@ -424,7 +410,7 @@ class Database:
             # FTS Search
             cursor = conn.execute(
                 """
-                SELECT 
+                SELECT
                     fts.recording_id,
                     snippet(transcripts_fts, 1, '<b>', '</b>', '...', 32) as text_snippet,
                     r.title,

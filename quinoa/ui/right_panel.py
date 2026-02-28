@@ -131,8 +131,10 @@ class RightPanel(QWidget):
         """Remove all widgets from the chat layout."""
         while self.chat_layout.count() > 0:
             item = self.chat_layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
+            if item:
+                widget = item.widget()
+                if widget:
+                    widget.deleteLater()
 
     def _setup_ui(self) -> None:
         """Setup the panel UI."""

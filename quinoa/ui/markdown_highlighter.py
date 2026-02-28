@@ -114,8 +114,11 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         # Horizontal rules: ---, ***, ___
         self.rules.append((re.compile(r"^[-*_]{3,}\s*$", re.MULTILINE), self.hr_format, 0))
 
-    def highlightBlock(self, text: str) -> None:
+    def highlightBlock(self, text: str | None) -> None:
         """Apply syntax highlighting to a block of text."""
+        if text is None:
+            return
+
         # Apply each rule
         for pattern, fmt, _group in self.rules:
             for match in pattern.finditer(text):

@@ -68,7 +68,6 @@ from quinoa.ui.transcript_handler import (
     utterances_from_json,
     utterances_to_json,
 )
-from quinoa.ui.audio_player import AudioPlayer
 from quinoa.ui.transcript_view import TranscriptView
 
 logger = logging.getLogger("quinoa")
@@ -457,8 +456,10 @@ class MiddlePanel(QWidget):
         # Clear existing chips
         while self.speaker_chips_layout.count():
             item = self.speaker_chips_layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
+            if item:
+                widget = item.widget()
+                if widget:
+                    widget.deleteLater()
 
         if not self._cached_utterances:
             self.speakers_label.setVisible(False)

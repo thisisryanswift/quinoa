@@ -400,12 +400,12 @@ class MainWindow(QMainWindow):
         config.set("left_panel_collapsed", self._left_collapsed)
         config.set("right_panel_collapsed", self._right_collapsed)
 
-    def closeEvent(self, event):
+    def closeEvent(self, a0):
         """Handle window close - minimize to tray or quit."""
         if self.tray_manager.is_visible() and not self._quitting:
             # Minimize to tray instead of closing
             self.hide()
-            event.ignore()
+            a0.ignore()
             self.tray_manager.show_message(
                 "Quinoa",
                 "Minimized to tray. Right-click icon to quit.",
@@ -423,4 +423,4 @@ class MainWindow(QMainWindow):
             self._stop_compression_worker()
             # Stop device monitor
             self.middle_panel.stop_device_monitor()
-            event.accept()
+            a0.accept()

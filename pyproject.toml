@@ -22,10 +22,22 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Optional dependencies - kept for backwards compatibility with some tools
 dev = [
     "ruff>=0.8.0",
     "mypy>=1.13.0",
     "pytest>=8.0.0",
+    "maturin>=1.12.5",
+    "types-Markdown",
+]
+
+[dependency-groups]
+dev = [
+    "ruff>=0.8.0",
+    "mypy>=1.13.0",
+    "pytest>=8.0.0",
+    "maturin>=1.12.5",
+    "types-Markdown",
 ]
 
 [tool.maturin]
@@ -67,8 +79,3 @@ warn_unused_ignores = true
 # Start lenient, tighten over time
 ignore_missing_imports = true
 check_untyped_defs = false
-
-[dependency-groups]
-dev = [
-    "maturin>=1.12.5",
-]

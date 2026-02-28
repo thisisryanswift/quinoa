@@ -447,9 +447,9 @@ class RichTextEditor(QWidget):
         """Set placeholder text."""
         self.editor.setPlaceholderText(text)
 
-    def setFocus(self) -> None:
+    def setFocus(self, reason: Qt.FocusReason = Qt.FocusReason.OtherFocusReason) -> None:
         """Set focus to the editor."""
-        self.editor.setFocus()
+        self.editor.setFocus(reason)
 
     def document(self):
         """Get the underlying document."""

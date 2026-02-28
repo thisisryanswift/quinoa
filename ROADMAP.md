@@ -2,6 +2,14 @@
 
 ## Recently Completed
 
+### Session: 2026-02-28
+
+**Resilience & AI Recovery:**
+- Robust Google Calendar authentication recovery (handles `invalid_grant` and expired tokens).
+- AI Transcription recovery: New regex-based parser extracts utterances even from truncated Gemini responses.
+- Migrated task tracking from `beads` to `ticket` (`tk`) for better project hygiene.
+- Large-scale Rust audio capture engine formatting (rustfmt).
+
 ### Session: 2025-12-08
 
 **Features Added:**

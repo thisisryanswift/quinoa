@@ -9,6 +9,7 @@ from PyQt6.QtGui import QAction, QDropEvent, QFont
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QHBoxLayout,
+    QHeaderView,
     QInputDialog,
     QLabel,
     QLineEdit,
@@ -22,8 +23,6 @@ from PyQt6.QtWidgets import (
     QTreeWidgetItem,
     QVBoxLayout,
     QWidget,
-    QHeaderView,
-    QStyle,
 )
 
 from quinoa.calendar import is_authenticated
