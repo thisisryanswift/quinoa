@@ -69,7 +69,9 @@ class NotificationWorker(QThread):
 
     def set_recording_state(self, is_recording: bool) -> None:
         """Update the recording state (called from main thread)."""
+        self._mutex.lock()
         self._is_recording = is_recording
+        self._mutex.unlock()
 
     def _reset_daily_state(self) -> None:
         """Reset notification tracking at the start of each day."""
@@ -101,7 +103,11 @@ class NotificationWorker(QThread):
             title = event.get("title", "Meeting")
             meet_link = event.get("meet_link")
             start_time_raw = event.get("start_time")
-            recording_id = event.get("recording_id") or event.get("rec_id")
+            recording_id = event.get("recording_id")
+            if recording_id is None:
+                recording_id = event.get("rec_id")
+            if recording_id == "":
+                recording_id = None
 
             # Skip if video_only is enabled and no video link
             if video_only and not meet_link:
@@ -112,24 +118,28 @@ class NotificationWorker(QThread):
             if not start_time:
                 continue
 
+            event_key = event_id or f"{start_time.isoformat()}::{title}"
+            if not event_id:
+                logger.debug("Calendar event has no event_id; using fallback key")
+
             # 1. Pre-meeting notification
-            self._check_upcoming_notification(event_id, title, start_time, now)
+            self._check_upcoming_notification(event_key, title, start_time, now)
 
             # 2. Recording reminder
             if config.get("recording_reminder_enabled", True):
                 self._check_recording_reminder(
-                    event_id, title, start_time, now, recording_id, grace_minutes
+                    event_key, title, start_time, now, recording_id, grace_minutes
                 )
 
     def _check_upcoming_notification(
         self,
-        event_id: str,
+        event_key: str,
         title: str,
         start_time: datetime,
         now: datetime,
     ) -> None:
         """Send a notification when a meeting is about to start."""
-        if event_id in self._notified_upcoming:
+        if event_key in self._notified_upcoming:
             return
 
         minutes_until = (start_time - now).total_seconds() / 60
@@ -145,12 +155,12 @@ class NotificationWorker(QThread):
                 message = f"Starts in {mins} minutes at {time_str}"
 
             self.notify.emit(f"Upcoming: {title}", message, 5000)
-            self._notified_upcoming.add(event_id)
+            self._notified_upcoming.add(event_key)
             logger.info("Notification sent for upcoming meeting: %s", title)
 
     def _check_recording_reminder(
         self,
-        event_id: str,
+        event_key: str,
         title: str,
         start_time: datetime,
         now: datetime,
@@ -158,15 +168,18 @@ class NotificationWorker(QThread):
         grace_minutes: int,
     ) -> None:
         """Send a reminder if a meeting started but no recording is active."""
-        if event_id in self._notified_reminder:
+        if event_key in self._notified_reminder:
             return
 
         # Already has a recording linked — no reminder needed
-        if recording_id:
+        if recording_id is not None:
             return
 
         # Currently recording — no reminder needed
-        if self._is_recording:
+        self._mutex.lock()
+        is_recording = self._is_recording
+        self._mutex.unlock()
+        if is_recording:
             return
 
         # Check if meeting started + grace period has elapsed
@@ -179,19 +192,25 @@ class NotificationWorker(QThread):
         if now > start_time + timedelta(minutes=30):
             return
 
-        self.recording_reminder.emit(event_id, title)
-        self._notified_reminder.add(event_id)
+        self.recording_reminder.emit(event_key, title)
+        self._notified_reminder.add(event_key)
         logger.info("Recording reminder sent for meeting: %s", title)
 
     @staticmethod
     def _parse_time(raw_time: str | datetime | None) -> datetime | None:
-        """Parse a time value from the database."""
+        """Parse a time value from the database, normalized to local naive datetime."""
         if raw_time is None:
             return None
         if isinstance(raw_time, datetime):
-            return raw_time
-        try:
-            # SQLite stores as ISO format string
-            return datetime.fromisoformat(raw_time)
-        except (ValueError, TypeError):
-            return None
+            dt = raw_time
+        else:
+            try:
+                # SQLite stores as ISO format string
+                dt = datetime.fromisoformat(raw_time)
+            except (ValueError, TypeError):
+                return None
+        # Normalize tz-aware datetimes to local naive so comparisons with
+        # datetime.now() (naive) never raise TypeError.
+        if dt.tzinfo is not None:
+            dt = dt.astimezone().replace(tzinfo=None)
+        return dt

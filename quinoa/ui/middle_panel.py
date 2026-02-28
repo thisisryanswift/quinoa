@@ -255,6 +255,15 @@ class MiddlePanel(QWidget):
         self.auto_save_timer = QTimer()
         self.auto_save_timer.timeout.connect(self._auto_save_notes)
 
+        # One-shot timer for deferred auto-transcription (kept as instance so it
+        # can be cancelled during shutdown)
+        self._auto_transcribe_timer = QTimer(self)
+        self._auto_transcribe_timer.setSingleShot(True)
+        self._auto_transcribe_timer.timeout.connect(self._start_transcription)
+
+        # Set during teardown to prevent stale callbacks from running
+        self._shutting_down = False
+
         # Transcription worker
         self._worker: TranscribeWorker | None = None
         self._transcribing_rec_id: str | None = None
@@ -881,6 +890,9 @@ class MiddlePanel(QWidget):
                 self.device_monitor.stop()
             except Exception as e:
                 logger.warning("Error stopping device monitor: %s", e)
+        # Cancel any pending deferred operations so they don't fire after teardown
+        self._shutting_down = True
+        self._auto_transcribe_timer.stop()
 
     def refresh_devices(self):
         """Refresh the list of available audio devices."""
@@ -1501,8 +1513,9 @@ class MiddlePanel(QWidget):
         # Auto-transcribe if enabled
         if config.get("auto_transcribe", True) and config.get("api_key"):
             logger.info("Auto-transcribe: starting transcription for %s", rec_id)
-            # Short delay to let UI settle before starting transcription
-            QTimer.singleShot(500, self._start_transcription)
+            # Short delay to let UI settle before starting transcription.
+            # Use instance timer so it can be cancelled if the app closes first.
+            self._auto_transcribe_timer.start(500)
 
     def _auto_save_notes(self):
         """Auto-save notes during recording."""
@@ -1702,6 +1715,9 @@ class MiddlePanel(QWidget):
 
     def _start_transcription(self):
         """Start transcription."""
+        if self._shutting_down:
+            return
+
         if not config.get("api_key"):
             QMessageBox.warning(self, "Missing API Key", "Set your Gemini API Key in Settings.")
             return

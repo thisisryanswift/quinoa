@@ -14,6 +14,7 @@ from PyQt6.QtWidgets import (
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QSpinBox,
     QVBoxLayout,
 )
 
@@ -105,10 +106,21 @@ class SettingsDialog(QDialog):
         self.notify_video_only_checkbox.setChecked(config.get("notify_video_only", True))
         notification_layout.addWidget(self.notify_video_only_checkbox)
 
+        # Grace period row
+        grace_row = QHBoxLayout()
+        grace_row.addWidget(QLabel("Recording reminder delay:"))
+        self.grace_period_spin = QSpinBox()
+        self.grace_period_spin.setRange(0, 30)
+        self.grace_period_spin.setSuffix(" min")
+        self.grace_period_spin.setValue(config.get("reminder_grace_period_minutes", 2))
+        grace_row.addWidget(self.grace_period_spin)
+        grace_row.addStretch()
+        notification_layout.addLayout(grace_row)
+
         notification_info = QLabel(
             "Notifications require Google Calendar to be connected.\n"
-            "Recording reminders appear when a meeting starts and\n"
-            "you haven't begun recording yet."
+            "Recording reminders appear after the selected delay once a meeting starts\n"
+            "and you haven't begun recording yet."
         )
         notification_info.setStyleSheet("color: #888; font-size: 11px;")
         notification_layout.addWidget(notification_info)
@@ -190,6 +202,7 @@ class SettingsDialog(QDialog):
         config.set("notifications_enabled", self.notifications_checkbox.isChecked())
         config.set("recording_reminder_enabled", self.recording_reminder_checkbox.isChecked())
         config.set("notify_video_only", self.notify_video_only_checkbox.isChecked())
+        config.set("reminder_grace_period_minutes", self.grace_period_spin.value())
         self.accept()
 
     def _update_calendar_status(self) -> None:

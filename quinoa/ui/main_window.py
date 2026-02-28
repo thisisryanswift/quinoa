@@ -298,9 +298,9 @@ class MainWindow(QMainWindow):
                 self._notification_worker.set_recording_state
             )
 
-            # Connect tray icon click to show window
-            if self.tray_manager.tray_icon:
-                self.tray_manager.tray_icon.messageClicked.connect(self._on_notification_clicked)
+            # Connect tray notification click to show window (via TrayIconManager signal
+            # so the connection survives any future icon recreation)
+            self.tray_manager.message_clicked.connect(self._on_notification_clicked)
 
             self._notification_worker.start()
             logger.info("Notification worker started")
