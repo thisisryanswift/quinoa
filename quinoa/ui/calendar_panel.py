@@ -34,6 +34,7 @@ from quinoa.constants import (
     LAYOUT_MARGIN_SMALL,
 )
 from quinoa.storage.database import Database
+from quinoa.ui.styles import TOGGLE_TAB
 
 logger = logging.getLogger("quinoa")
 
@@ -113,10 +114,12 @@ class CalendarPanel(QWidget):
         self.btn_today = QPushButton("Today")
         self.btn_today.setCheckable(True)
         self.btn_today.setChecked(True)
+        self.btn_today.setStyleSheet(TOGGLE_TAB)
         self.btn_today.clicked.connect(lambda: self._switch_view(0))
 
         self.btn_history = QPushButton("History")
         self.btn_history.setCheckable(True)
+        self.btn_history.setStyleSheet(TOGGLE_TAB)
         self.btn_history.clicked.connect(lambda: self._switch_view(1))
 
         toggle_layout.addWidget(self.btn_today)
@@ -136,8 +139,8 @@ class CalendarPanel(QWidget):
         self.meeting_list.setWordWrap(True)  # Wrap long meeting names
         self.meeting_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         # Add spacing/padding for better readability (keeps native theme colors)
-        self.meeting_list.setSpacing(2)
-        self.meeting_list.setStyleSheet("QListWidget::item { padding: 6px 4px; }")
+        self.meeting_list.setSpacing(4)
+        self.meeting_list.setStyleSheet("QListWidget::item { padding: 8px 6px; }")
 
         # Connect scroll event for lazy loading
         self.meeting_list.verticalScrollBar().valueChanged.connect(self._on_scroll)
@@ -171,6 +174,8 @@ class CalendarPanel(QWidget):
         self.folder_tree.customContextMenuRequested.connect(self._show_tree_context_menu)
         self.folder_tree.itemClicked.connect(self._on_tree_item_clicked)
         self.folder_tree.item_moved_to_folder.connect(self._on_item_moved_to_folder)
+        self.folder_tree.setIndentation(16)
+        self.folder_tree.setStyleSheet("QTreeWidget::item { padding: 4px 0px; }")
 
         history_layout.addWidget(self.folder_tree)
 
@@ -308,6 +313,7 @@ class CalendarPanel(QWidget):
             detail = time_str
 
         item = QListWidgetItem(f"{status_prefix}{title}\n{detail}")
+        item.setToolTip(title)
         item.setData(Qt.ItemDataRole.UserRole, event["event_id"])
         item.setData(Qt.ItemDataRole.UserRole + 1, ITEM_TYPE_CALENDAR_EVENT)
         item.setData(Qt.ItemDataRole.UserRole + 2, recording_id)
@@ -333,6 +339,7 @@ class CalendarPanel(QWidget):
         detail = f"{time_str} {ICON_BULLET} {duration_str}" if duration_str else time_str
 
         item = QListWidgetItem(f"{ICON_CHECKMARK} {title}\n{detail}")
+        item.setToolTip(title)
         item.setData(Qt.ItemDataRole.UserRole, rec["id"])
         item.setData(Qt.ItemDataRole.UserRole + 1, ITEM_TYPE_RECORDING)
 
@@ -411,10 +418,14 @@ class CalendarPanel(QWidget):
             uncategorized_item.setFlags(uncategorized_item.flags() | Qt.ItemFlag.ItemIsDropEnabled)
             has_uncategorized = False
 
+            # Collect uncategorized items for date grouping
+            uncategorized_items: list[tuple[datetime | None, QTreeWidgetItem, str, str]] = []
+
             # Helper to create tree item
             def create_tree_item(title, timestamp, item_id, item_type, folder_id):
                 nonlocal has_uncategorized
 
+                dt = None
                 try:
                     dt = datetime.fromisoformat(str(timestamp))
                     time_str = dt.strftime("%b %d %I:%M %p").lstrip("0")
@@ -423,19 +434,20 @@ class CalendarPanel(QWidget):
 
                 display_text = f"{title} ({time_str})"
                 item = QTreeWidgetItem([display_text, "", ""])
+                item.setToolTip(0, title)
 
                 # Add icons for notes/transcript in separate columns
                 if item_type == ITEM_TYPE_RECORDING:
                     rec = self.db.get_recording(item_id)
                     if rec:
                         if rec.get("notes"):
-                            item.setText(1, "📄")
+                            item.setText(1, "\U0001f4c4")
                             item.setToolTip(1, "Has notes")
                             item.setTextAlignment(1, Qt.AlignmentFlag.AlignCenter)
 
                         transcript = self.db.get_transcript(item_id)
                         if transcript:
-                            item.setText(2, "💬")
+                            item.setText(2, "\U0001f4ac")
                             item.setToolTip(2, "Has transcript")
                             item.setTextAlignment(2, Qt.AlignmentFlag.AlignCenter)
 
@@ -453,7 +465,8 @@ class CalendarPanel(QWidget):
                 if folder_id and folder_id in folder_map:
                     folder_map[folder_id].addChild(item)
                 else:
-                    uncategorized_item.addChild(item)
+                    # Defer adding to uncategorized for date grouping
+                    uncategorized_items.append((dt, item, item_id, item_type))
                     has_uncategorized = True
 
                 return item
@@ -510,6 +523,44 @@ class CalendarPanel(QWidget):
                     self.folder_tree.setCurrentItem(item)
 
             if has_uncategorized:
+                # Sort uncategorized items by date (newest first)
+                uncategorized_items.sort(key=lambda x: x[0] if x[0] else datetime.min, reverse=True)
+
+                # Group by date and add with date sub-headers
+                current_date_group = None
+                for dt, item, item_id, item_type in uncategorized_items:
+                    if dt:
+                        date_group = self._get_date_group(dt)
+                        if date_group != current_date_group:
+                            current_date_group = date_group
+                            date_header = QTreeWidgetItem([date_group])
+                            date_header.setData(0, Qt.ItemDataRole.UserRole, "header:date")
+                            date_header.setFlags(Qt.ItemFlag.NoItemFlags)
+                            font = QFont()
+                            font.setBold(True)
+                            font.setPointSize(9)
+                            date_header.setFont(0, font)
+                            date_header.setForeground(0, Qt.GlobalColor.gray)
+                            uncategorized_item.addChild(date_header)
+
+                    uncategorized_item.addChild(item)
+
+                    # Restore selection
+                    if item_type == ITEM_TYPE_RECORDING:
+                        if (
+                            item_id == current_selection
+                            and self._selected_type == ITEM_TYPE_RECORDING
+                        ):
+                            item.setSelected(True)
+                            self.folder_tree.setCurrentItem(item)
+                    elif item_type == ITEM_TYPE_CALENDAR_EVENT:
+                        if (
+                            item_id == current_selection
+                            and self._selected_type == ITEM_TYPE_CALENDAR_EVENT
+                        ):
+                            item.setSelected(True)
+                            self.folder_tree.setCurrentItem(item)
+
                 root.addChild(uncategorized_item)
                 uncategorized_item.setExpanded(True)
 

@@ -13,6 +13,7 @@ from quinoa.calendar.sync_worker import CalendarSyncWorker
 from quinoa.config import config
 from quinoa.constants import (
     FILE_SEARCH_DELAY_MS,
+    LEFT_PANEL_MIN_WIDTH,
     LEFT_PANEL_WIDTH,
     RIGHT_PANEL_WIDTH,
     SPLITTER_DEFAULT_SIZES,
@@ -65,6 +66,7 @@ class MainWindow(QMainWindow):
 
         # Left panel - Calendar/Navigation
         self.left_panel = CalendarPanel(self.db)
+        self.left_panel.setMinimumWidth(LEFT_PANEL_MIN_WIDTH)
         self.left_panel.meeting_selected.connect(self._on_calendar_meeting_selected)
         self.left_panel.recording_selected.connect(self._on_meeting_selected)
         self.left_panel.new_meeting_requested.connect(self._on_new_meeting)

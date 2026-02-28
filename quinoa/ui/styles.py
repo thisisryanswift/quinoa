@@ -90,6 +90,26 @@ BUTTON_PAUSE = """
 # Status label - just for the paused state color
 STATUS_LABEL_PAUSED = "color: #f39c12;"  # Orange to match pause button
 
+# Toggle tab buttons (Today/History in left panel)
+TOGGLE_TAB = """
+    QPushButton {
+        background-color: transparent;
+        border: none;
+        border-bottom: 2px solid transparent;
+        color: #888;
+        font-size: 13px;
+        font-weight: bold;
+        padding: 6px 12px;
+    }
+    QPushButton:hover {
+        color: #bbb;
+    }
+    QPushButton:checked {
+        color: white;
+        border-bottom: 2px solid #4a9eff;
+    }
+"""
+
 # Speaker colors for transcript bubbles - keep these consistent
 # First color is always for "Me" (the user)
 SPEAKER_COLORS = [

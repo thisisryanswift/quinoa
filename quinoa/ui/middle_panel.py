@@ -317,6 +317,20 @@ class MiddlePanel(QWidget):
         self.diarized_transcript_view.merge_speakers_requested.connect(self._merge_speakers)
         self.content_stack.addWidget(self.diarized_transcript_view)
 
+        # Page 3: Empty state (shown when no meeting is selected)
+        self.empty_state_widget = QWidget()
+        empty_layout = QVBoxLayout(self.empty_state_widget)
+        empty_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        empty_state_label = QLabel(
+            "Select a meeting from the left panel\n"
+            "to view notes and transcripts,\n"
+            "or start a new recording."
+        )
+        empty_state_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        empty_state_label.setStyleSheet("color: #888; font-size: 14px;")
+        empty_layout.addWidget(empty_state_label)
+        self.content_stack.addWidget(self.empty_state_widget)
+
         layout.addWidget(self.content_stack, stretch=1)
 
         separator = QFrame()
@@ -326,6 +340,9 @@ class MiddlePanel(QWidget):
 
         controls_widget = self._create_recording_controls()
         layout.addWidget(controls_widget)
+
+        # Start with empty state visible
+        self.content_stack.setCurrentIndex(3)
 
     def _create_meeting_header(self) -> QWidget:
         """Create the meeting header with title and metadata chips."""
@@ -821,8 +838,10 @@ class MiddlePanel(QWidget):
 
         rec_layout.addLayout(dev_row)
 
-        # Level meters row
-        meters_row = QHBoxLayout()
+        # Level meters row (hidden when not recording)
+        self.meters_widget = QWidget()
+        meters_row = QHBoxLayout(self.meters_widget)
+        meters_row.setContentsMargins(0, 0, 0, 0)
 
         meters_row.addWidget(QLabel("Mic:"))
         self.mic_level_bar = QProgressBar()
@@ -840,7 +859,8 @@ class MiddlePanel(QWidget):
         self.sys_level_bar.setMaximumHeight(15)
         meters_row.addWidget(self.sys_level_bar, stretch=1)
 
-        rec_layout.addLayout(meters_row)
+        self.meters_widget.setVisible(False)
+        rec_layout.addWidget(self.meters_widget)
 
         # Status label (inside recording container)
         self.status_label = QLabel("Ready")
@@ -1252,7 +1272,7 @@ class MiddlePanel(QWidget):
         self._set_notes_text("")
         self.transcript_viewer.clear()
         self.transcribe_btn.setEnabled(False)
-        self.content_stack.setCurrentIndex(0)  # Show notes editor
+        self.content_stack.setCurrentIndex(3)  # Show empty state
 
     def toggle_recording(self):
         """Toggle between start and stop recording."""
@@ -1443,6 +1463,7 @@ class MiddlePanel(QWidget):
             self.sys_audio_check.setEnabled(False)
             self.transcribe_btn.setEnabled(False)
             self.pause_btn.setEnabled(True)
+            self.meters_widget.setVisible(True)
             self.status_label.setText("Recording...")
             self._current_mic_id = mic_id  # Track current mic for switch detection
 
@@ -1492,6 +1513,7 @@ class MiddlePanel(QWidget):
         # Reset meters
         self.mic_level_bar.setValue(0)
         self.sys_level_bar.setValue(0)
+        self.meters_widget.setVisible(False)
 
         # Update UI
         self.record_btn.setText("Start Recording")
