@@ -1,6 +1,6 @@
 ---
 id: quinoa-z17
-status: open
+status: closed
 deps: []
 links: []
 created: 2025-12-10T09:37:17.526856493-05:00
