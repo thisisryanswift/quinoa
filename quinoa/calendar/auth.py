@@ -83,7 +83,9 @@ def _load_tokens() -> dict | None:
         with contextlib.suppress(Exception):
             keyring.delete_password(KEYRING_SERVICE, KEYRING_TOKEN_KEY)
     except Exception as e:
-        logger.warning("Failed to load calendar tokens from keyring: %s", e)
+        logger.warning("Corrupt calendar tokens in keyring, removing: %s", e)
+        with contextlib.suppress(Exception):
+            keyring.delete_password(KEYRING_SERVICE, KEYRING_TOKEN_KEY)
     return None
 
 

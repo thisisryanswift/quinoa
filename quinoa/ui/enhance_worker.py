@@ -54,7 +54,7 @@ class EnhanceWorker(QThread):
 
             logger.info("Generating enhanced notes...")
             response = client.models.generate_content(
-                model=GEMINI_MODEL_TRANSCRIPTION,
+                model=config.get("gemini_model") or GEMINI_MODEL_TRANSCRIPTION,
                 contents=[types.Content(parts=[types.Part.from_text(text=prompt)])],
                 config=types.GenerateContentConfig(
                     response_mime_type="application/json",

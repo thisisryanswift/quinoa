@@ -20,6 +20,9 @@ DEFAULT_CONFIG = {
     "output_dir": os.path.expanduser("~/Music/Quinoa"),
     "system_audio_enabled": True,
     "mic_device_id": None,
+    # AI model
+    "gemini_model": None,  # Uses GEMINI_MODEL_TRANSCRIPTION constant if None
+    "cached_gemini_models": None,  # Cached list of available models from API
     # Window state persistence
     "splitter_sizes": None,  # Will use SPLITTER_DEFAULT_SIZES if None
     "left_panel_collapsed": False,

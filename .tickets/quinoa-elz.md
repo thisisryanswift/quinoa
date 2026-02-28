@@ -1,6 +1,6 @@
 ---
 id: quinoa-elz
-status: open
+status: closed
 deps: []
 links: []
 created: 2025-12-09T08:07:34.397628124-05:00

@@ -81,6 +81,7 @@ class MainWindow(QMainWindow):
         self.middle_panel.recording_state_changed.connect(self._on_recording_state_changed)
         self.middle_panel.recording_started.connect(self._on_recording_started)
         self.middle_panel.recording_stopped.connect(self._on_recording_stopped)
+        self.middle_panel.silence_detected.connect(self._on_silence_detected)
         self.left_panel.meeting_renamed.connect(self.middle_panel.on_meeting_renamed)
         self.splitter.addWidget(self.middle_panel)
 
@@ -334,6 +335,14 @@ class MainWindow(QMainWindow):
         """Handle user clicking a notification — show and activate the window."""
         self.show()
         self.activateWindow()
+
+    def _on_silence_detected(self) -> None:
+        """Handle extended silence during recording."""
+        self.tray_manager.show_message(
+            "Silence Detected",
+            "No audio activity for 90 seconds.\nYou may want to stop recording.",
+            10000,
+        )
 
     def _init_compression_worker(self) -> None:
         """Initialize background compression worker."""

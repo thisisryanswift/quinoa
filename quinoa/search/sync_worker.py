@@ -131,6 +131,11 @@ class SyncWorker(QThread):
                 logger.debug("Skipping %s - content unchanged", rec_id)
                 return
 
+            # Delete old document before re-uploading (prevents duplicates)
+            if sync_status and sync_status.get("file_search_file_name"):
+                old_doc_name = sync_status["file_search_file_name"]
+                self.file_search.delete_meeting(old_doc_name)
+
             # Upload to File Search
             meeting_date = str(recording.get("started_at", ""))
             file_name = self.file_search.upload_meeting(rec_id, content, meeting_date)

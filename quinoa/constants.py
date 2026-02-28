@@ -7,6 +7,11 @@ from enum import IntEnum
 # Gemini Models
 GEMINI_MODEL_TRANSCRIPTION = "gemini-2.5-flash"  # 65K output tokens (2.0-flash only has 8K)
 GEMINI_MODEL_SEARCH = "gemini-2.5-flash"
+GEMINI_AVAILABLE_MODELS = [
+    "gemini-2.5-flash",
+    "gemini-2.5-pro",
+    "gemini-2.0-flash",
+]
 
 # Window dimensions
 WINDOW_MIN_WIDTH = 1000
@@ -27,6 +32,8 @@ LAYOUT_MARGIN_SMALL = 10
 DEFAULT_SAMPLE_RATE = 48000
 AUDIO_CHUNK_SIZE = 4096
 TIMER_INTERVAL_MS = 100
+SILENCE_THRESHOLD = 0.01  # VU level below which audio is considered silent
+SILENCE_NOTIFICATION_SECONDS = 90  # Notify after this many seconds of silence
 
 # Storage
 MIN_DISK_SPACE_BYTES = 500 * 1024 * 1024  # 500 MB

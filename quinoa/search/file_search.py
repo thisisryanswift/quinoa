@@ -8,6 +8,7 @@ from typing import Any
 from google import genai
 from google.genai import types
 
+from quinoa.config import config
 from quinoa.constants import GEMINI_MODEL_SEARCH
 
 logger = logging.getLogger("quinoa")
@@ -79,7 +80,7 @@ class FileSearchManager:
             meeting_date: Meeting date string for metadata
 
         Returns:
-            The file display name for tracking.
+            The Gemini document resource name for tracking and deletion.
         """
         if not self._store_name:
             raise FileSearchError("Store not initialized. Call ensure_store_exists() first.")
@@ -110,24 +111,37 @@ class FileSearchManager:
                 time.sleep(2)
                 operation = self.client.operations.get(operation)
 
-            logger.info("Uploaded meeting %s to File Search", rec_id)
-            return display_name
+            # Extract document resource name for future deletion
+            document_name = ""
+            if operation.response:
+                document_name = operation.response.document_name or ""
+
+            logger.info("Uploaded meeting %s to File Search (document: %s)", rec_id, document_name)
+            return document_name or display_name
 
         except Exception as e:
             raise FileSearchError(f"Failed to upload meeting {rec_id}: {e}") from e
 
-    def delete_meeting(self, file_name: str) -> bool:
-        """Remove a meeting from the File Search store.
+    def delete_meeting(self, document_name: str) -> bool:
+        """Remove a meeting document from the File Search store.
 
-        Note: The File Search API may not support individual file deletion.
-        This is a placeholder for when/if that becomes available.
+        Args:
+            document_name: The Gemini document resource name
+                (e.g. 'fileSearchStores/.../documents/...').
 
         Returns:
             True if successful (or deletion not needed).
         """
-        # TODO: Implement when File Search API supports file deletion
-        logger.info("Delete requested for %s (not yet supported by API)", file_name)
-        return True
+        if not document_name:
+            return True
+
+        try:
+            self.client.file_search_stores.documents.delete(name=document_name)
+            logger.info("Deleted document %s from File Search", document_name)
+            return True
+        except Exception as e:
+            logger.warning("Failed to delete document %s: %s", document_name, e)
+            return False
 
     def query(
         self,
@@ -175,7 +189,7 @@ When answering:
             logger.debug("Using store: %s", self._store_name)
 
             response = self.client.models.generate_content(
-                model=GEMINI_MODEL_SEARCH,
+                model=config.get("gemini_model") or GEMINI_MODEL_SEARCH,
                 contents=contents,
                 config=types.GenerateContentConfig(
                     system_instruction=system_instruction,

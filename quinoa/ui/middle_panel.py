@@ -10,8 +10,9 @@ from collections.abc import Callable
 from datetime import datetime
 
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
-from PyQt6.QtGui import QAction
+from PyQt6.QtGui import QAction, QClipboard
 from PyQt6.QtWidgets import (
+    QApplication,
     QButtonGroup,
     QCheckBox,
     QComboBox,
@@ -43,6 +44,8 @@ from quinoa.constants import (
     LAYOUT_SPACING,
     MIN_DISK_SPACE_BYTES,
     NOTES_AUTO_SAVE_INTERVAL_MS,
+    SILENCE_NOTIFICATION_SECONDS,
+    SILENCE_THRESHOLD,
     TIMER_INTERVAL_MS,
     PanelMode,
     ViewType,
@@ -215,6 +218,7 @@ class MiddlePanel(QWidget):
     recording_stopped = pyqtSignal(str)  # recording_id
     recording_state_changed = pyqtSignal(bool)  # is_recording
     transcription_completed = pyqtSignal(str)  # recording_id
+    silence_detected = pyqtSignal()  # extended silence during recording
 
     def __init__(
         self,
@@ -236,8 +240,9 @@ class MiddlePanel(QWidget):
         self.current_rec_id: str | None = None
         self.devices: list = []
         self.device_monitor = None
-        self._mode = PanelMode.IDLE
         self._current_mic_id: str | None = None  # Track current mic for mid-recording switches
+        self._silence_start_time: float | None = None  # When silence was first detected
+        self._silence_notified = False  # Whether we've already notified for this silence period
 
         # Viewing state
         self._viewing_rec_id: str | None = None
@@ -740,6 +745,16 @@ class MiddlePanel(QWidget):
 
         layout.addStretch()
 
+        # Export button with format menu
+        self.export_btn = QPushButton("Copy")
+        self.export_btn.setFlat(True)
+        self.export_btn.setVisible(False)
+        export_menu = QMenu(self.export_btn)
+        export_menu.addAction("Copy as Plain Text", self._export_plain_text)
+        export_menu.addAction("Copy as Markdown", self._export_markdown)
+        self.export_btn.setMenu(export_menu)
+        layout.addWidget(self.export_btn)
+
         # Enhance button (visible only in Enhanced view when enhancement is needed)
         self.enhance_notes_btn = QPushButton("Generate Enhanced Notes")
         self.enhance_notes_btn.setVisible(False)
@@ -762,8 +777,9 @@ class MiddlePanel(QWidget):
 
     def _update_view_content(self) -> None:
         """Update the displayed content based on current view."""
-        # Hide enhance button by default
+        # Hide action buttons by default
         self.enhance_notes_btn.setVisible(False)
+        self.export_btn.setVisible(False)
 
         if self._current_view == ViewType.NOTES:
             # Show notes in editable notes_editor
@@ -776,13 +792,16 @@ class MiddlePanel(QWidget):
                     self._cached_utterances, self._cached_speaker_names
                 )
                 self.content_stack.setCurrentIndex(2)  # Diarized view
+                self.export_btn.setVisible(True)
             else:
                 self.transcript_viewer.set_markdown(self._cached_transcript)
                 self.content_stack.setCurrentIndex(1)  # Plain text fallback
+                self.export_btn.setVisible(bool(self._cached_transcript))
         elif self._current_view == ViewType.ENHANCED:
             # Show enhanced notes or prompt to generate
             if self._cached_enhanced:
                 self.transcript_viewer.set_markdown(self._cached_enhanced)
+                self.export_btn.setVisible(True)
             else:
                 # Show placeholder and enable generate button if we have notes + transcript
                 can_enhance = bool(self._cached_notes and self._cached_transcript)
@@ -805,6 +824,47 @@ class MiddlePanel(QWidget):
                         "Enhanced notes require both user notes and a transcript."
                     )
             self.content_stack.setCurrentIndex(1)
+
+    def _get_exportable_content(self, fmt: str) -> str:
+        """Build exportable content string from current view.
+
+        Args:
+            fmt: Either 'plain' or 'markdown'.
+        """
+        if self._current_view == ViewType.TRANSCRIPT:
+            if self._cached_utterances:
+                lines: list[str] = []
+                for u in self._cached_utterances:
+                    original = u.get("original_speaker", u.get("speaker", "Unknown"))
+                    display = self._cached_speaker_names.get(original, original)
+                    text = u.get("text", "")
+                    if fmt == "markdown":
+                        lines.append(f"**{display}:** {text}")
+                    else:
+                        lines.append(f"{display}: {text}")
+                return "\n\n".join(lines)
+            return self._cached_transcript
+        elif self._current_view == ViewType.ENHANCED:
+            return self._cached_enhanced
+        return ""
+
+    def _export_plain_text(self) -> None:
+        """Copy current view content to clipboard as plain text."""
+        content = self._get_exportable_content("plain")
+        if content:
+            clipboard = QApplication.clipboard()
+            if clipboard:
+                clipboard.setText(content, QClipboard.Mode.Clipboard)
+                logger.info("Copied %d chars of plain text to clipboard", len(content))
+
+    def _export_markdown(self) -> None:
+        """Copy current view content to clipboard as markdown."""
+        content = self._get_exportable_content("markdown")
+        if content:
+            clipboard = QApplication.clipboard()
+            if clipboard:
+                clipboard.setText(content, QClipboard.Mode.Clipboard)
+                logger.info("Copied %d chars of markdown to clipboard", len(content))
 
     def _create_recording_controls(self) -> QWidget:
         """Create the recording controls widget."""
@@ -1472,6 +1532,10 @@ class MiddlePanel(QWidget):
             self.timer.start(TIMER_INTERVAL_MS)
             self.auto_save_timer.start(NOTES_AUTO_SAVE_INTERVAL_MS)
 
+            # Reset silence detection
+            self._silence_start_time = None
+            self._silence_notified = False
+
             # Emit signals
             self.recording_started.emit(self.current_rec_id)
             self.recording_state_changed.emit(True)
@@ -1646,6 +1710,28 @@ class MiddlePanel(QWidget):
                         self.mic_level_bar.setValue(min(100, int(event.mic_level * 100)))
                     if event.system_level is not None:
                         self.sys_level_bar.setValue(min(100, int(event.system_level * 100)))
+
+                    # Silence detection (skip when paused)
+                    if not self.is_paused:
+                        mic = event.mic_level or 0.0
+                        sys = event.system_level or 0.0
+                        if mic < SILENCE_THRESHOLD and sys < SILENCE_THRESHOLD:
+                            if self._silence_start_time is None:
+                                self._silence_start_time = time.time()
+                            elif (
+                                not self._silence_notified
+                                and time.time() - self._silence_start_time
+                                >= SILENCE_NOTIFICATION_SECONDS
+                            ):
+                                self._silence_notified = True
+                                self.silence_detected.emit()
+                                logger.info(
+                                    "Extended silence detected (>%ds)", SILENCE_NOTIFICATION_SECONDS
+                                )
+                        else:
+                            # Reset on any audio activity
+                            self._silence_start_time = None
+                            self._silence_notified = False
                 elif event.type_ == "paused":
                     self.is_paused = True
                     self.pause_start_time = time.time()

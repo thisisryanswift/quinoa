@@ -1,6 +1,6 @@
 ---
 id: quinoa-g0l
-status: open
+status: closed
 deps: []
 links: []
 created: 2025-12-10T16:04:57.599539494-05:00

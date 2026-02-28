@@ -1,6 +1,6 @@
 ---
 id: quinoa-wwy
-status: open
+status: closed
 deps: []
 links: []
 created: 2025-12-09T08:07:34.330100269-05:00

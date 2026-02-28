@@ -5,6 +5,7 @@ from google import genai
 from google.genai import types
 from pydantic import BaseModel
 
+from quinoa.config import config
 from quinoa.constants import GEMINI_MODEL_TRANSCRIPTION
 
 logger = logging.getLogger("quinoa")
@@ -65,7 +66,7 @@ class GeminiTranscriber:
 
         logger.info("Generating transcript...")
         response = self.client.models.generate_content(
-            model=GEMINI_MODEL_TRANSCRIPTION,
+            model=config.get("gemini_model") or GEMINI_MODEL_TRANSCRIPTION,
             contents=[
                 types.Content(
                     parts=[
