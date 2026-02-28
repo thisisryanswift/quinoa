@@ -389,8 +389,9 @@ def trim_recording(
                 shutil.copy2(file_path, backup_path)
                 logger.info("Backed up %s -> %s", filename, backup_path.name)
 
-        # Trim to a temp file, then replace the original
-        tmp_path = file_path.with_suffix(file_path.suffix + ".trimming")
+        # Trim to a temp file, then replace the original.
+        # Keep the original extension so ffmpeg can infer the output format.
+        tmp_path = file_path.with_stem(file_path.stem + ".trimming")
         try:
             if trim_audio_file(file_path, tmp_path, keep_regions):
                 tmp_path.replace(file_path)

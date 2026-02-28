@@ -117,7 +117,7 @@ class WaveformWidget(QWidget):
         if end - start < MIN_REGION_SECONDS:
             return
         self._cuts.append(CutMarker(start, end))
-        self._cuts.sort(key=lambda c: c.start_seconds)
+        self._merge_overlapping_cuts()
         self.cuts_changed.emit()
         self.update()
 
@@ -133,6 +133,29 @@ class WaveformWidget(QWidget):
         self._cuts.clear()
         self.cuts_changed.emit()
         self.update()
+
+    def _merge_overlapping_cuts(self) -> bool:
+        """Merge any overlapping or adjacent cut regions.
+
+        Returns True if any merges occurred.
+        """
+        if len(self._cuts) < 2:
+            return False
+
+        self._cuts.sort(key=lambda c: c.start_seconds)
+        merged: list[CutMarker] = [self._cuts[0]]
+
+        for cut in self._cuts[1:]:
+            prev = merged[-1]
+            if cut.start_seconds <= prev.end_seconds:
+                # Overlap or adjacent — extend the previous region
+                prev.end_seconds = max(prev.end_seconds, cut.end_seconds)
+            else:
+                merged.append(cut)
+
+        changed = len(merged) != len(self._cuts)
+        self._cuts = merged
+        return changed
 
     def add_cut_at_center(self) -> None:
         """Add a cut in the center of the visible view."""
@@ -164,7 +187,7 @@ class WaveformWidget(QWidget):
                     continue
             if end - start >= MIN_REGION_SECONDS:
                 self._cuts.append(CutMarker(start, end))
-        self._cuts.sort(key=lambda c: c.start_seconds)
+        self._merge_overlapping_cuts()
         self.cuts_changed.emit()
         self.update()
 
@@ -354,12 +377,18 @@ class WaveformWidget(QWidget):
     def mouseReleaseEvent(self, event: QMouseEvent | None) -> None:
         if event is None:
             return
+        merged = False
         if self._dragging:
             self._dragging = None
+            merged = self._merge_overlapping_cuts()
             self.cuts_changed.emit()
         if self._region_dragging:
             self._region_dragging = None
+            if not merged:
+                self._merge_overlapping_cuts()
             self.cuts_changed.emit()
+        if merged:
+            self.update()
 
     def wheelEvent(self, event: QWheelEvent | None) -> None:
         """Zoom with scroll wheel, pan with Shift+scroll."""
