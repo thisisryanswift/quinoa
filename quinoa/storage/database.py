@@ -934,3 +934,33 @@ class Database:
                 "UPDATE calendar_events SET folder_id = ? WHERE event_id = ?",
                 (folder_id, event_id),
             )
+
+    def get_folder(self, folder_id: str) -> dict[str, Any] | None:
+        """Get a single folder by ID."""
+        with self._conn() as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute("SELECT * FROM meeting_folders WHERE id = ?", (folder_id,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+
+    def get_event_for_recording(self, rec_id: str) -> dict[str, Any] | None:
+        """Get the calendar event linked to a recording."""
+        with self._conn() as conn:
+            conn.row_factory = sqlite3.Row
+            cursor = conn.execute("SELECT * FROM calendar_events WHERE recording_id = ?", (rec_id,))
+            row = cursor.fetchone()
+            return dict(row) if row else None
+
+    def get_recordings_in_folder(
+        self, folder_id: str, limit: int | None = None
+    ) -> list[dict[str, Any]]:
+        """Get recordings in a folder, most recent first."""
+        with self._conn() as conn:
+            conn.row_factory = sqlite3.Row
+            query = "SELECT * FROM recordings WHERE folder_id = ? ORDER BY started_at DESC"
+            params: list[str | int] = [folder_id]
+            if limit is not None:
+                query += " LIMIT ?"
+                params.append(limit)
+            cursor = conn.execute(query, params)
+            return [dict(row) for row in cursor.fetchall()]

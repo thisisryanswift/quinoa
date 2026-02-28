@@ -4,6 +4,7 @@ import contextlib
 import json
 import logging
 import uuid
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 from PyQt6.QtCore import Qt, QTimer
@@ -26,6 +27,17 @@ if TYPE_CHECKING:
     from quinoa.storage.database import Database
 
 logger = logging.getLogger("quinoa")
+
+
+@dataclass
+class MeetingContext:
+    """Context about the meeting the user is currently viewing."""
+
+    title: str | None = None
+    date: str | None = None
+    folder_name: str | None = None
+    attendees: list[str] = field(default_factory=list)
+    recent_meetings: list[str] = field(default_factory=list)  # titles with dates
 
 
 class ChatMessageWidget(QFrame):
@@ -111,6 +123,7 @@ class RightPanel(QWidget):
         self._chat_history: list[dict[str, str]] = []
         self._chat_worker: ChatWorker | None = None
         self._enabled = False
+        self._viewing_context: MeetingContext | None = None
         self._setup_ui()
 
     def _create_placeholder(self) -> QLabel:
@@ -275,6 +288,10 @@ class RightPanel(QWidget):
             self.sync_status.setText("Not connected")
             self.sync_status.setStyleSheet("color: #888; font-size: 11px;")
 
+    def set_viewing_context(self, context: MeetingContext | None) -> None:
+        """Update the meeting context for contextual chat queries."""
+        self._viewing_context = context
+
     def _send_message(self) -> None:
         """Send user message and get response."""
         if not self._enabled or not self._file_search:
@@ -305,7 +322,9 @@ class RightPanel(QWidget):
         # Start chat worker
         from quinoa.search.chat_worker import ChatWorker
 
-        self._chat_worker = ChatWorker(self._file_search, question, self._chat_history)
+        self._chat_worker = ChatWorker(
+            self._file_search, question, self._chat_history, self._viewing_context
+        )
         self._chat_worker.response_ready.connect(self._on_response)
         self._chat_worker.error.connect(self._on_error)
         self._chat_worker.start()

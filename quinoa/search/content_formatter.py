@@ -10,6 +10,8 @@ def format_meeting_document(
     transcript: dict[str, Any] | None,
     notes: str,
     action_items: list[dict[str, Any]],
+    folder_name: str | None = None,
+    attendees: list[dict[str, Any]] | None = None,
 ) -> str:
     """Format meeting data as structured markdown for File Search.
 
@@ -42,6 +44,17 @@ def format_meeting_document(
         duration_str = "Unknown duration"
 
     sections.append(f"{date_str} ({duration_str})")
+
+    # Metadata line: folder and attendees
+    meta_parts = []
+    if folder_name:
+        meta_parts.append(f"Series: {folder_name}")
+    if attendees:
+        names = [a.get("name") or a.get("email", "Unknown") for a in attendees]
+        meta_parts.append(f"Attendees: {', '.join(names)}")
+    if meta_parts:
+        sections.append(" | ".join(meta_parts))
+
     sections.append("")
 
     # Notes section

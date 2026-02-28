@@ -1,8 +1,9 @@
 """Background worker for syncing meetings to Gemini File Search."""
 
+import contextlib
 import logging
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from PyQt6.QtCore import QThread, pyqtSignal
 
@@ -116,13 +117,37 @@ class SyncWorker(QThread):
             notes = self.db.get_notes(rec_id)
             action_items = self.db.get_action_items(rec_id)
 
+            # Fetch folder and attendee metadata for richer documents
+            folder_name: str | None = None
+            attendees: list[dict[str, Any]] | None = None
+
+            folder_id = recording.get("folder_id")
+            if folder_id:
+                folder = self.db.get_folder(folder_id)
+                if folder:
+                    folder_name = folder.get("name")
+
+            event = self.db.get_event_for_recording(rec_id)
+            if event and event.get("attendees"):
+                import json
+
+                with contextlib.suppress(json.JSONDecodeError, TypeError):
+                    attendees = json.loads(event["attendees"])
+
             # Skip if no meaningful content
             if not transcript and not notes:
                 logger.debug("Skipping %s - no content to sync", rec_id)
                 return
 
             # Format content
-            content = format_meeting_document(recording, transcript, notes, action_items)
+            content = format_meeting_document(
+                recording,
+                transcript,
+                notes,
+                action_items,
+                folder_name=folder_name,
+                attendees=attendees,
+            )
             content_hash = compute_content_hash(content)
 
             # Check if already synced with same content

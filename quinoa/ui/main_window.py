@@ -428,15 +428,101 @@ class MainWindow(QMainWindow):
     def _on_meeting_selected(self, rec_id: str):
         """Handle recording selection from left panel."""
         self.middle_panel.load_meeting(rec_id)
+        self._update_chat_context_for_recording(rec_id)
 
     def _on_calendar_meeting_selected(self, event_id: str):
         """Handle calendar event selection (unrecorded meeting)."""
         # Load the calendar event details in the middle panel
         self.middle_panel.load_calendar_event(event_id)
+        self._update_chat_context_for_event(event_id)
 
     def _on_new_meeting(self):
         """Handle new meeting request - return to idle/recording mode."""
         self.middle_panel.clear_view()
+        self.right_panel.set_viewing_context(None)
+
+    def _update_chat_context_for_recording(self, rec_id: str) -> None:
+        """Build and set meeting context for the AI chat panel."""
+        from quinoa.ui.right_panel import MeetingContext
+
+        rec = self.db.get_recording(rec_id)
+        if not rec:
+            self.right_panel.set_viewing_context(None)
+            return
+
+        ctx = MeetingContext(
+            title=rec.get("title"),
+            date=rec.get("started_at"),
+        )
+
+        # Resolve folder name
+        folder_id = rec.get("folder_id")
+        if folder_id:
+            folder = self.db.get_folder(folder_id)
+            if folder:
+                ctx.folder_name = folder.get("name")
+
+                # Get recent meetings in the same folder for series context
+                recent = self.db.get_recordings_in_folder(folder_id, limit=5)
+                for r in recent:
+                    if r["id"] != rec_id:
+                        title = r.get("title", "Untitled")
+                        date = r.get("started_at", "")
+                        if date:
+                            try:
+                                from datetime import datetime
+
+                                dt = datetime.fromisoformat(date) if isinstance(date, str) else date
+                                date = dt.strftime("%b %d, %Y")
+                            except (ValueError, TypeError):
+                                pass
+                        ctx.recent_meetings.append(f"{title} ({date})")
+
+        # Resolve attendees from linked calendar event
+        event = self.db.get_event_for_recording(rec_id)
+        if event and event.get("attendees"):
+            import json
+
+            try:
+                attendee_list = json.loads(event["attendees"])
+                ctx.attendees = [a.get("name") or a.get("email", "Unknown") for a in attendee_list]
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+        self.right_panel.set_viewing_context(ctx)
+
+    def _update_chat_context_for_event(self, event_id: str) -> None:
+        """Build and set meeting context for a calendar event (no recording)."""
+        from quinoa.ui.right_panel import MeetingContext
+
+        event = self.db.get_calendar_event(event_id)
+        if not event:
+            self.right_panel.set_viewing_context(None)
+            return
+
+        ctx = MeetingContext(
+            title=event.get("title"),
+            date=event.get("start_time"),
+        )
+
+        # Resolve folder
+        folder_id = event.get("folder_id")
+        if folder_id:
+            folder = self.db.get_folder(folder_id)
+            if folder:
+                ctx.folder_name = folder.get("name")
+
+        # Attendees
+        if event.get("attendees"):
+            import json
+
+            try:
+                attendee_list = json.loads(event["attendees"])
+                ctx.attendees = [a.get("name") or a.get("email", "Unknown") for a in attendee_list]
+            except (json.JSONDecodeError, TypeError):
+                pass
+
+        self.right_panel.set_viewing_context(ctx)
 
     def _open_settings(self):
         """Open settings dialog."""

@@ -1,9 +1,11 @@
 """Gemini File Search API wrapper."""
 
+from __future__ import annotations
+
 import logging
 import tempfile
 import time
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from google import genai
 from google.genai import types
@@ -11,6 +13,9 @@ from google.genai.errors import ClientError
 
 from quinoa.config import config
 from quinoa.constants import GEMINI_MODEL_SEARCH
+
+if TYPE_CHECKING:
+    from quinoa.ui.right_panel import MeetingContext
 
 logger = logging.getLogger("quinoa")
 
@@ -159,12 +164,14 @@ class FileSearchManager:
         self,
         question: str,
         chat_history: list[dict[str, str]] | None = None,
+        meeting_context: MeetingContext | None = None,
     ) -> tuple[str, list[dict[str, Any]]]:
         """Query the File Search store with optional chat context.
 
         Args:
             question: User's question
             chat_history: Previous messages in the conversation
+            meeting_context: Context about the meeting the user is viewing
 
         Returns:
             Tuple of (response_text, citations).
@@ -186,14 +193,7 @@ class FileSearchManager:
         contents.append(types.Content(role="user", parts=[types.Part.from_text(text=question)]))
 
         # System instruction for search-focused assistant
-        system_instruction = """You are a helpful assistant for searching through meeting recordings and notes.
-Your primary purpose is to help users find information from their past meetings.
-When answering:
-- Be concise and direct
-- Cite specific meetings when referencing information
-- If you can't find relevant information in the meetings, say so clearly
-- Focus on facts from the meetings, not general knowledge
-- When quoting, use the exact text from the transcript"""
+        system_instruction = self._build_system_instruction(meeting_context)
 
         try:
             logger.debug("File Search query: %s", question)
@@ -294,3 +294,64 @@ When answering:
         except Exception as e:
             logger.exception("File Search query failed")
             raise FileSearchError(f"Query failed: {e}") from e
+
+    def _build_system_instruction(self, meeting_context: MeetingContext | None) -> str:
+        """Build the system instruction, optionally enriched with viewing context."""
+        base = (
+            "You are a helpful assistant for searching through meeting recordings and notes.\n"
+            "Your primary purpose is to help users find information from their past meetings.\n"
+            "When answering:\n"
+            "- Be concise and direct\n"
+            "- Cite specific meetings when referencing information\n"
+            "- If you can't find relevant information in the meetings, say so clearly\n"
+            "- Focus on facts from the meetings, not general knowledge\n"
+            "- When quoting, use the exact text from the transcript"
+        )
+
+        if not meeting_context:
+            return base
+
+        context_parts: list[str] = []
+
+        if meeting_context.title:
+            line = f"The user is currently viewing: {meeting_context.title}"
+            if meeting_context.date:
+                try:
+                    from datetime import datetime
+
+                    dt = (
+                        datetime.fromisoformat(meeting_context.date)
+                        if isinstance(meeting_context.date, str)
+                        else meeting_context.date
+                    )
+                    line += f" ({dt.strftime('%B %d, %Y')})"
+                except (ValueError, TypeError):
+                    line += f" ({meeting_context.date})"
+            context_parts.append(line)
+
+        if meeting_context.folder_name:
+            context_parts.append(
+                f'This meeting is part of the series "{meeting_context.folder_name}".'
+            )
+
+        if meeting_context.attendees:
+            names = ", ".join(meeting_context.attendees)
+            context_parts.append(f"Attendees: {names}.")
+
+        if meeting_context.recent_meetings:
+            context_parts.append(
+                "Recent meetings in this series:\n"
+                + "\n".join(f"- {m}" for m in meeting_context.recent_meetings)
+            )
+
+        if context_parts:
+            context_block = "\n".join(context_parts)
+            return (
+                f"{base}\n\n"
+                "## Current Context\n"
+                f"{context_block}\n\n"
+                "Use this context to interpret relative references like "
+                '"last time", "previous meeting", "this series", or attendee names.'
+            )
+
+        return base
