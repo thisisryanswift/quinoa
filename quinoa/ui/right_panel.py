@@ -345,12 +345,12 @@ class RightPanel(QWidget):
         self.chat_layout.addWidget(msg_widget)
 
         # Scroll to bottom after a brief delay to ensure layout is updated
-        QTimer.singleShot(
-            50,
-            lambda: self.chat_area.verticalScrollBar().setValue(
-                self.chat_area.verticalScrollBar().maximum()
-            ),
-        )
+        def _scroll_to_bottom() -> None:
+            scrollbar = self.chat_area.verticalScrollBar()
+            if scrollbar:
+                scrollbar.setValue(scrollbar.maximum())
+
+        QTimer.singleShot(50, _scroll_to_bottom)
 
     def _clear_chat(self) -> None:
         """Clear chat and start new session."""

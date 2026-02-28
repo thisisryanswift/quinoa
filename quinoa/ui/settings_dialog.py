@@ -84,8 +84,10 @@ def filter_gemini_models(models: list[dict[str, object]]) -> list[str]:
 
     # Sort: non-preview first, then alphabetically descending (newest first)
     def sort_key(name: str) -> tuple[int, str]:
-        is_preview = 1 if "preview" in name else 0
-        return (is_preview, name)
+        # 0 for preview (sorted last), 1 for non-preview (sorted first)
+        # reverse=True makes higher values come first
+        is_stable = 0 if "preview" in name else 1
+        return (is_stable, name)
 
     result.sort(key=sort_key, reverse=True)
     return result
@@ -336,6 +338,13 @@ class SettingsDialog(QDialog):
 
         # Cache for next time
         config.set("cached_gemini_models", models)
+
+    def closeEvent(self, a0) -> None:
+        """Clean up background worker on dialog close."""
+        if self._model_worker and self._model_worker.isRunning():
+            self._model_worker.quit()
+            self._model_worker.wait(2000)
+        super().closeEvent(a0)
 
     def _update_calendar_status(self) -> None:
         """Update the calendar connection status UI."""

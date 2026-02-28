@@ -213,6 +213,9 @@ class MeetingSelectionDialog(QDialog):
 class MiddlePanel(QWidget):
     """Middle panel with notes/transcript view and recording controls."""
 
+    # Type annotations for attributes set in untyped _setup_ui
+    notes_editor: RichTextEditor
+
     # Signals
     recording_started = pyqtSignal(str)  # recording_id
     recording_stopped = pyqtSignal(str)  # recording_id
@@ -565,6 +568,7 @@ class MiddlePanel(QWidget):
         if other_speakers:
             menu.addSeparator()
             merge_menu = menu.addMenu("Merge with")
+            assert merge_menu is not None
             for other in other_speakers:
                 other_display = self._cached_speaker_names.get(other, other)
                 merge_action = QAction(other_display, self)
@@ -1737,11 +1741,17 @@ class MiddlePanel(QWidget):
                     self.pause_start_time = time.time()
                     self.pause_btn.setText("Resume")
                     self.status_label.setStyleSheet(STATUS_LABEL_PAUSED)
+                    # Reset silence tracking so pause duration isn't counted
+                    self._silence_start_time = None
+                    self._silence_notified = False
                 elif event.type_ == "resumed":
                     self.is_paused = False
                     self.recording_paused_time += time.time() - self.pause_start_time
                     self.pause_btn.setText("Pause")
                     self.status_label.setStyleSheet("")  # Reset to default
+                    # Reset silence tracking to start fresh after resume
+                    self._silence_start_time = None
+                    self._silence_notified = False
                 elif event.type_ == "stopped":
                     self._stop_recording()
                 elif event.type_ == "error":

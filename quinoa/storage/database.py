@@ -39,7 +39,7 @@ class Database:
                 timeout=30.0,
             )
             self._local.conn.row_factory = sqlite3.Row
-        return self._local.conn
+        return self._local.conn  # type: ignore[no-any-return]
 
     @contextmanager
     def _conn(self) -> Generator[sqlite3.Connection, None, None]:

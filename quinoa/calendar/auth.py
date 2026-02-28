@@ -77,15 +77,16 @@ def _load_tokens() -> dict | None:
     try:
         tokens_json = keyring.get_password(KEYRING_SERVICE, KEYRING_TOKEN_KEY)
         if tokens_json:
-            return json.loads(tokens_json)
-    except json.JSONDecodeError as e:
-        logger.warning("Failed to parse calendar tokens (corrupted?): %s", e)
-        with contextlib.suppress(Exception):
-            keyring.delete_password(KEYRING_SERVICE, KEYRING_TOKEN_KEY)
-    except Exception as e:
+            result: dict = json.loads(tokens_json)
+            return result
+    except (json.JSONDecodeError, ValueError, KeyError, TypeError) as e:
+        # Data corruption — delete the broken entry
         logger.warning("Corrupt calendar tokens in keyring, removing: %s", e)
         with contextlib.suppress(Exception):
             keyring.delete_password(KEYRING_SERVICE, KEYRING_TOKEN_KEY)
+    except Exception as e:
+        # Infrastructure error (DBus, keyring daemon, etc.) — don't delete
+        logger.warning("Failed to read calendar tokens from keyring: %s", e)
     return None
 
 
@@ -205,7 +206,8 @@ def get_user_email() -> str | None:
         service = build("calendar", "v3", credentials=creds)
         # Get primary calendar - its id is the user's email
         calendar = service.calendars().get(calendarId="primary").execute()
-        return calendar.get("id")  # Primary calendar ID is the user's email
+        email: str | None = calendar.get("id")
+        return email  # Primary calendar ID is the user's email
     except Exception as e:
         logger.warning("Failed to get user email: %s", e)
         return None

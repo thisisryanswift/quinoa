@@ -16,6 +16,7 @@ from quinoa.constants import (
     LEFT_PANEL_MIN_WIDTH,
     LEFT_PANEL_WIDTH,
     RIGHT_PANEL_WIDTH,
+    SILENCE_NOTIFICATION_SECONDS,
     SPLITTER_DEFAULT_SIZES,
     WINDOW_MIN_HEIGHT,
     WINDOW_MIN_WIDTH,
@@ -340,7 +341,8 @@ class MainWindow(QMainWindow):
         """Handle extended silence during recording."""
         self.tray_manager.show_message(
             "Silence Detected",
-            "No audio activity for 90 seconds.\nYou may want to stop recording.",
+            f"No audio activity for {SILENCE_NOTIFICATION_SECONDS} seconds."
+            "\nYou may want to stop recording.",
             10000,
         )
 

@@ -132,7 +132,8 @@ def utterances_from_json(json_str: str | None) -> list[dict]:
     if not json_str:
         return []
     try:
-        return json.loads(json_str)
+        result: list[dict] = json.loads(json_str)
+        return result
     except json.JSONDecodeError:
         return []
 

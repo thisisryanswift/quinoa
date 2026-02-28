@@ -662,7 +662,8 @@ class CalendarPanel(QWidget):
         # Check children
         child_matches = False
         for i in range(item.childCount()):
-            if self._filter_recursive(item.child(i), text):
+            child = item.child(i)
+            if child is not None and self._filter_recursive(child, text):
                 child_matches = True
 
         # If item matches or any child matches, show it
@@ -1297,7 +1298,8 @@ class CalendarPanel(QWidget):
             for i in range(self.meeting_list.count()):
                 item = self.meeting_list.item(i)
                 if item and item.data(Qt.ItemDataRole.UserRole) == self._selected_id:
-                    return item.data(Qt.ItemDataRole.UserRole + 2)
+                    rec_id: str | None = item.data(Qt.ItemDataRole.UserRole + 2)
+                    return rec_id
         return None
 
 

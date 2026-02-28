@@ -62,6 +62,8 @@ class FileSearchManager:
             )
             self._store_name = store.name
             logger.info("Created File Search store: %s", self._store_name)
+            if self._store_name is None:
+                raise FileSearchError("Store created but has no name")
             return self._store_name
         except Exception as e:
             raise FileSearchError(f"Failed to create File Search store: {e}") from e
@@ -130,9 +132,18 @@ class FileSearchManager:
                 (e.g. 'fileSearchStores/.../documents/...').
 
         Returns:
-            True if successful (or deletion not needed).
+            True if successful (or deletion not needed/skipped).
         """
         if not document_name:
+            return True
+
+        # Legacy entries may store display names (e.g. 'meeting_rec_xxx.md')
+        # instead of resource paths. These can't be deleted via the API.
+        if "/" not in document_name:
+            logger.debug(
+                "Skipping deletion for legacy display name '%s' (not a resource path)",
+                document_name,
+            )
             return True
 
         try:
@@ -188,18 +199,50 @@ When answering:
             logger.debug("Chat history length: %d", len(chat_history) if chat_history else 0)
             logger.debug("Using store: %s", self._store_name)
 
-            response = self.client.models.generate_content(
-                model=config.get("gemini_model") or GEMINI_MODEL_SEARCH,
-                contents=contents,
-                config=types.GenerateContentConfig(
-                    system_instruction=system_instruction,
-                    tools=[
-                        types.Tool(
-                            file_search=types.FileSearch(file_search_store_names=[self._store_name])
-                        )
-                    ],
-                ),
-            )
+            # Use configured model, but fall back to GEMINI_MODEL_SEARCH if the
+            # configured model doesn't support tool use (file_search requires it).
+            model = config.get("gemini_model") or GEMINI_MODEL_SEARCH
+
+            try:
+                response = self.client.models.generate_content(
+                    model=model,
+                    contents=contents,
+                    config=types.GenerateContentConfig(
+                        system_instruction=system_instruction,
+                        tools=[
+                            types.Tool(
+                                file_search=types.FileSearch(
+                                    file_search_store_names=[self._store_name]
+                                )
+                            )
+                        ],
+                    ),
+                )
+            except Exception as e:
+                # If the configured model doesn't support tools, retry with the
+                # known-good default search model
+                if model != GEMINI_MODEL_SEARCH and "tool" in str(e).lower():
+                    logger.warning(
+                        "Model %s doesn't support tools, falling back to %s",
+                        model,
+                        GEMINI_MODEL_SEARCH,
+                    )
+                    response = self.client.models.generate_content(
+                        model=GEMINI_MODEL_SEARCH,
+                        contents=contents,
+                        config=types.GenerateContentConfig(
+                            system_instruction=system_instruction,
+                            tools=[
+                                types.Tool(
+                                    file_search=types.FileSearch(
+                                        file_search_store_names=[self._store_name]
+                                    )
+                                )
+                            ],
+                        ),
+                    )
+                else:
+                    raise
 
             # Log raw response structure for debugging
             logger.debug(
@@ -213,9 +256,10 @@ When answering:
                 logger.debug("Grounding metadata: %s", metadata)
 
                 # Extract citation info if available
-                if hasattr(metadata, "grounding_chunks"):
-                    logger.debug("Grounding chunks: %d", len(metadata.grounding_chunks))
-                    for i, chunk in enumerate(metadata.grounding_chunks):
+                if hasattr(metadata, "grounding_chunks") and metadata.grounding_chunks:
+                    grounding_chunks = metadata.grounding_chunks
+                    logger.debug("Grounding chunks: %d", len(grounding_chunks))
+                    for i, chunk in enumerate(grounding_chunks):
                         logger.debug("Chunk %d: %s", i, chunk)
                         if hasattr(chunk, "retrieved_context"):
                             ctx = chunk.retrieved_context

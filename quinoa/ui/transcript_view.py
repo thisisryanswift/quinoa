@@ -12,7 +12,6 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-
 from quinoa.ui.styles import SPEAKER_COLORS
 
 
@@ -246,6 +245,7 @@ class TranscriptView(QScrollArea):
 
         # Reassign this utterance to another speaker
         reassign_menu = menu.addMenu("Assign this line to")
+        assert reassign_menu is not None
 
         # Get all unique speakers
         all_speakers = []
@@ -274,6 +274,7 @@ class TranscriptView(QScrollArea):
         if other_speakers:
             menu.addSeparator()
             merge_menu = menu.addMenu(f'Merge all "{speaker}" with')
+            assert merge_menu is not None
             for other in other_speakers:
                 other_display = self._get_display_speaker(other)
                 merge_action = QAction(other_display, self)

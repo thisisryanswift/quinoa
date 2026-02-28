@@ -153,11 +153,13 @@ class CalendarClient:
         conference_data = event.get("conferenceData", {})
         for entry_point in conference_data.get("entryPoints", []):
             if entry_point.get("entryPointType") == "video":
-                return entry_point.get("uri")
+                uri: str | None = entry_point.get("uri")
+                return uri
 
         # Check hangoutLink (older format)
         if event.get("hangoutLink"):
-            return event["hangoutLink"]
+            link: str = event["hangoutLink"]
+            return link
 
         # Search description and location for video links
         text_to_search = event.get("description", "") + " " + event.get("location", "")
