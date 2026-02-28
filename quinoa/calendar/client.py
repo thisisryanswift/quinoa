@@ -8,6 +8,8 @@ from datetime import datetime, timedelta
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 
+from quinoa.constants import get_now
+
 logger = logging.getLogger("quinoa")
 
 # Regex patterns for video meeting links
@@ -38,7 +40,7 @@ class CalendarClient:
         if not calendar_ids:
             calendar_ids = ["primary"]
 
-        today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        today = get_now().replace(hour=0, minute=0, second=0, microsecond=0)
         tomorrow = today + timedelta(days=1)
 
         return self.get_events(calendar_ids, today, tomorrow, video_only=video_only)

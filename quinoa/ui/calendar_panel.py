@@ -9,7 +9,6 @@ from PyQt6.QtGui import QAction, QDropEvent, QFont
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QHBoxLayout,
-    QHeaderView,
     QInputDialog,
     QLabel,
     QLineEdit,
@@ -32,6 +31,7 @@ from quinoa.constants import (
     ICON_CIRCLE_EMPTY,
     ICON_PLAY,
     LAYOUT_MARGIN_SMALL,
+    get_now,
 )
 from quinoa.storage.database import Database
 from quinoa.ui.styles import TOGGLE_TAB
@@ -162,10 +162,9 @@ class CalendarPanel(QWidget):
         # Folder Tree
         self.folder_tree = FolderTree()
         self.folder_tree.setHeaderHidden(True)
-        self.folder_tree.setColumnCount(3)
-        self.folder_tree.header().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        self.folder_tree.header().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        self.folder_tree.header().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        self.folder_tree.setColumnCount(1)
+        self.folder_tree.header().setStretchLastSection(True)
+        self.folder_tree.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
         self.folder_tree.setDragEnabled(True)
         self.folder_tree.setAcceptDrops(True)
@@ -175,7 +174,7 @@ class CalendarPanel(QWidget):
         self.folder_tree.itemClicked.connect(self._on_tree_item_clicked)
         self.folder_tree.item_moved_to_folder.connect(self._on_item_moved_to_folder)
         self.folder_tree.setIndentation(16)
-        self.folder_tree.setStyleSheet("QTreeWidget::item { padding: 4px 0px; }")
+        self.folder_tree.setStyleSheet("QTreeWidget::item { padding: 6px 6px; margin: 1px 0px; }")
 
         history_layout.addWidget(self.folder_tree)
 
@@ -286,7 +285,7 @@ class CalendarPanel(QWidget):
         # Convert to local naive datetimes for comparison with datetime.now()
         start_time = self._to_local(start_time_raw)
         end_time = self._to_local(end_time_raw)
-        now = datetime.now()
+        now = get_now()
 
         time_str = self._format_time(start_time_raw)
         platform = self._get_meeting_platform(meet_link)
@@ -428,28 +427,28 @@ class CalendarPanel(QWidget):
                 dt = None
                 try:
                     dt = datetime.fromisoformat(str(timestamp))
+                    # Normalize to naive (local) datetime for consistent comparisons
+                    if dt.tzinfo is not None:
+                        dt = dt.replace(tzinfo=None)
                     time_str = dt.strftime("%b %d %I:%M %p").lstrip("0")
                 except (ValueError, TypeError):
                     time_str = ""
 
                 display_text = f"{title} ({time_str})"
-                item = QTreeWidgetItem([display_text, "", ""])
-                item.setToolTip(0, title)
 
-                # Add icons for notes/transcript in separate columns
+                # Append inline indicators for notes/transcript
+                indicators = ""
                 if item_type == ITEM_TYPE_RECORDING:
                     rec = self.db.get_recording(item_id)
                     if rec:
                         if rec.get("notes"):
-                            item.setText(1, "\U0001f4c4")
-                            item.setToolTip(1, "Has notes")
-                            item.setTextAlignment(1, Qt.AlignmentFlag.AlignCenter)
-
+                            indicators += " \U0001f4c4"
                         transcript = self.db.get_transcript(item_id)
                         if transcript:
-                            item.setText(2, "\U0001f4ac")
-                            item.setToolTip(2, "Has transcript")
-                            item.setTextAlignment(2, Qt.AlignmentFlag.AlignCenter)
+                            indicators += " \U0001f4ac"
+
+                item = QTreeWidgetItem([display_text + indicators])
+                item.setToolTip(0, title)
 
                 if item_type == ITEM_TYPE_RECORDING:
                     item.setData(0, Qt.ItemDataRole.UserRole, f"rec:{item_id}")
@@ -553,13 +552,13 @@ class CalendarPanel(QWidget):
                         ):
                             item.setSelected(True)
                             self.folder_tree.setCurrentItem(item)
-                    elif item_type == ITEM_TYPE_CALENDAR_EVENT:
-                        if (
-                            item_id == current_selection
-                            and self._selected_type == ITEM_TYPE_CALENDAR_EVENT
-                        ):
-                            item.setSelected(True)
-                            self.folder_tree.setCurrentItem(item)
+                    elif (
+                        item_type == ITEM_TYPE_CALENDAR_EVENT
+                        and item_id == current_selection
+                        and self._selected_type == ITEM_TYPE_CALENDAR_EVENT
+                    ):
+                        item.setSelected(True)
+                        self.folder_tree.setCurrentItem(item)
 
                 root.addChild(uncategorized_item)
                 uncategorized_item.setExpanded(True)
@@ -871,7 +870,7 @@ class CalendarPanel(QWidget):
 
     def _load_calendar_view(self):
         """Load the meetings-first calendar view."""
-        now = datetime.now()
+        now = get_now()
         today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
         today_end = today_start.replace(hour=23, minute=59, second=59)
 
@@ -896,7 +895,7 @@ class CalendarPanel(QWidget):
                 self._restore_selection(event["event_id"], ITEM_TYPE_CALENDAR_EVENT, item)
 
         # TODAY section - past calendar events + unlinked recordings
-        self._add_section_header("TODAY")
+        self._add_section_header("EARLIER")
 
         # Add past calendar events from today
         for event in reversed(past):
@@ -919,7 +918,7 @@ class CalendarPanel(QWidget):
     def _load_recordings_view(self):
         """Load the traditional recordings-only view (when calendar not connected)."""
         # Limit to today's recordings to match "Today" view semantics
-        now = datetime.now()
+        now = get_now()
         today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
         today_end = today_start.replace(hour=23, minute=59, second=59)
 
@@ -947,8 +946,8 @@ class CalendarPanel(QWidget):
 
     def _get_date_group(self, dt: datetime) -> str:
         """Get the date group label for a datetime."""
-        today = datetime.now().date()
-        rec_date = dt.date()
+        today = get_now().date()
+        rec_date = dt.date() if isinstance(dt, datetime) else dt
 
         if rec_date == today:
             return "Today"
@@ -983,7 +982,7 @@ class CalendarPanel(QWidget):
         start_date = end_date - timedelta(days=days)
 
         # Limit to 30 days max
-        max_history = datetime.now() - timedelta(days=30)
+        max_history = get_now() - timedelta(days=30)
         if start_date < max_history:
             start_date = max_history
 
@@ -1042,7 +1041,7 @@ class CalendarPanel(QWidget):
             return
 
         # Check if we've hit the limit
-        max_history = datetime.now() - timedelta(days=30)
+        max_history = get_now() - timedelta(days=30)
         if self._oldest_loaded_date <= max_history:
             return
 

@@ -6,6 +6,7 @@ from datetime import date, datetime, timedelta
 from PyQt6.QtCore import QMutex, QThread, QWaitCondition, pyqtSignal
 
 from quinoa.config import config
+from quinoa.constants import get_now
 from quinoa.storage.database import Database
 
 logger = logging.getLogger("quinoa")
@@ -75,7 +76,7 @@ class NotificationWorker(QThread):
 
     def _reset_daily_state(self) -> None:
         """Reset notification tracking at the start of each day."""
-        today = datetime.now().date()
+        today = get_now().date()
         if self._last_reset_date != today:
             self._notified_upcoming.clear()
             self._notified_reminder.clear()
@@ -94,7 +95,7 @@ class NotificationWorker(QThread):
             logger.warning("Notification worker: failed to get events: %s", e)
             return
 
-        now = datetime.now()
+        now = get_now()
         video_only = config.get("notify_video_only", True)
         grace_minutes = config.get("reminder_grace_period_minutes", 2)
 

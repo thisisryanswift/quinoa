@@ -46,6 +46,7 @@ from quinoa.constants import (
     TIMER_INTERVAL_MS,
     PanelMode,
     ViewType,
+    get_now,
 )
 from quinoa.storage.database import Database
 from quinoa.ui.audio_player import AudioPlayer
@@ -1002,7 +1003,7 @@ class MiddlePanel(QWidget):
         platform = get_meeting_platform(meet_link, full_name=True)
 
         # Check if meeting is upcoming or in progress (convert to local naive for comparison)
-        now = datetime.now()
+        now = get_now()
         start_dt_local: datetime | None = None
         end_dt_local: datetime | None = None
         if start_dt:

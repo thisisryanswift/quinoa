@@ -34,5 +34,6 @@ Thumbs.db
 # Project specific
 
 .env
+.gemini/
 context.md
 secrets.json

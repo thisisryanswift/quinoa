@@ -8,6 +8,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
+from quinoa.constants import get_now
+
 logger = logging.getLogger("quinoa")
 
 
@@ -248,7 +250,7 @@ class Database:
 
     def get_all_past_calendar_events(self) -> list[dict[str, Any]]:
         """Get all past calendar events (for history view)."""
-        now = datetime.now()
+        now = get_now()
         with self._conn() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute(
@@ -752,7 +754,7 @@ class Database:
 
     def get_todays_calendar_events(self) -> list[dict[str, Any]]:
         """Get today's calendar events with recording info."""
-        today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        today_start = get_now().replace(hour=0, minute=0, second=0, microsecond=0)
         today_end = today_start.replace(hour=23, minute=59, second=59)
         return self.get_calendar_events(today_start, today_end)
 
@@ -767,7 +769,7 @@ class Database:
     def get_current_meeting(self, buffer_minutes: int = 10) -> dict[str, Any] | None:
         """Find a meeting happening now (within buffer window)."""
 
-        now = datetime.now()
+        now = get_now()
         window_start = now - timedelta(minutes=buffer_minutes)
         window_end = now + timedelta(minutes=buffer_minutes)
 

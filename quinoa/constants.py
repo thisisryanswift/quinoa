@@ -1,5 +1,7 @@
 """Constants for Quinoa application."""
 
+import os
+from datetime import datetime
 from enum import IntEnum
 
 # Gemini Models
@@ -62,3 +64,20 @@ ICON_CIRCLE_EMPTY = "\u25cb"  # ○
 ICON_BULLET = "\u2022"  # •
 ICON_CALENDAR = "\U0001f4c5"  # 📅
 ICON_STOPWATCH = "\u23f1"  # ⏱
+
+
+def get_now() -> datetime:
+    """Return the current datetime, or a spoofed date if QUINOA_DATE_OVERRIDE is set.
+
+    Set QUINOA_DATE_OVERRIDE to an ISO date (e.g. '2026-03-02') to test the UI
+    as if it were a different day. Time-of-day is preserved from the real clock.
+    """
+    override = os.environ.get("QUINOA_DATE_OVERRIDE")
+    if override:
+        try:
+            fake_date = datetime.fromisoformat(override).date()
+            real_now = datetime.now()
+            return real_now.replace(year=fake_date.year, month=fake_date.month, day=fake_date.day)
+        except ValueError:
+            pass
+    return datetime.now()
