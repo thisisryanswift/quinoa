@@ -362,7 +362,12 @@ class CalendarPanel(QWidget):
             # Cache auth state so we don't hit keyring on every scroll event
             self._calendar_connected = is_authenticated()
 
-            if self._calendar_connected:
+            # Use calendar view if authenticated OR if we have cached events
+            # from a previous sync (e.g. token expired but sync worker already
+            # populated the DB before expiry).
+            has_cached_events = bool(self.db.get_todays_calendar_events())
+
+            if self._calendar_connected or has_cached_events:
                 self._load_calendar_view()
             else:
                 self._load_recordings_view()
@@ -382,10 +387,10 @@ class CalendarPanel(QWidget):
             folders = self.db.get_folders()
             recordings = self.db.get_recordings()
 
-            # Fetch past calendar events to fill in gaps (unrecorded meetings)
-            past_events = []
-            if is_authenticated():
-                past_events = self.db.get_all_past_calendar_events()
+            # Fetch past calendar events to fill in gaps (unrecorded meetings).
+            # Use cached events from DB even if auth is currently invalid
+            # (sync worker may have populated them before token expiry).
+            past_events: list[dict] = self.db.get_all_past_calendar_events()
 
             # Build folder map
             folder_map: dict[str, QTreeWidgetItem] = {}

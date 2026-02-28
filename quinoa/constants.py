@@ -62,6 +62,7 @@ class ViewType(IntEnum):
     NOTES = 0
     TRANSCRIPT = 1
     ENHANCED = 2
+    TRIM = 3
 
 
 # Unicode icons for UI

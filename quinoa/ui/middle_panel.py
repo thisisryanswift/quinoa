@@ -73,6 +73,7 @@ from quinoa.ui.transcript_handler import (
     utterances_to_json,
 )
 from quinoa.ui.transcript_view import TranscriptView
+from quinoa.ui.trim_view import TrimView
 
 logger = logging.getLogger("quinoa")
 
@@ -248,6 +249,7 @@ class MiddlePanel(QWidget):
         self._silence_notified = False  # Whether we've already notified for this silence period
 
         # Viewing state
+        self._mode = PanelMode.IDLE
         self._viewing_rec_id: str | None = None
         self._viewing_event_id: str | None = None  # Track currently viewed calendar event
         self._current_view = ViewType.TRANSCRIPT
@@ -339,6 +341,11 @@ class MiddlePanel(QWidget):
         empty_state_label.setStyleSheet("color: #888; font-size: 14px;")
         empty_layout.addWidget(empty_state_label)
         self.content_stack.addWidget(self.empty_state_widget)
+
+        # Page 4: Trim view
+        self.trim_view = TrimView()
+        self.trim_view.trim_applied.connect(self._on_trim_applied)
+        self.content_stack.addWidget(self.trim_view)
 
         layout.addWidget(self.content_stack, stretch=1)
 
@@ -747,6 +754,13 @@ class MiddlePanel(QWidget):
         self.view_button_group.addButton(self.enhanced_btn, ViewType.ENHANCED)
         layout.addWidget(self.enhanced_btn)
 
+        # Trim button
+        self.trim_btn = QPushButton("Trim")
+        self.trim_btn.setCheckable(True)
+        self.trim_btn.setFlat(True)
+        self.view_button_group.addButton(self.trim_btn, ViewType.TRIM)
+        layout.addWidget(self.trim_btn)
+
         layout.addStretch()
 
         # Export button with format menu
@@ -828,6 +842,64 @@ class MiddlePanel(QWidget):
                         "Enhanced notes require both user notes and a transcript."
                     )
             self.content_stack.setCurrentIndex(1)
+        elif self._current_view == ViewType.TRIM:
+            self._load_trim_view()
+            self.content_stack.setCurrentIndex(4)  # Trim view
+
+    def _load_trim_view(self) -> None:
+        """Load the trim view for the current recording."""
+        if not self._viewing_rec_id:
+            return
+
+        rec = self.db.get_recording(self._viewing_rec_id)
+        if not rec:
+            return
+
+        # Find audio file to analyse (prefer stereo mix, then mic)
+        audio_path = rec.get("stereo_path")
+        if not audio_path or not os.path.exists(audio_path):
+            audio_path = rec.get("mic_path")
+
+        recording_dir = rec.get("directory_path")
+        duration = rec.get("duration_seconds", 0) or 0
+
+        if not audio_path or not os.path.exists(audio_path):
+            logger.warning("No audio file found for trim: %s", self._viewing_rec_id)
+            return
+
+        if not recording_dir or not os.path.isdir(recording_dir):
+            logger.warning("No recording directory for trim: %s", self._viewing_rec_id)
+            return
+
+        self.trim_view.load_recording(audio_path, recording_dir, self._viewing_rec_id, duration)
+
+    def _on_trim_applied(self, new_duration: float) -> None:
+        """Handle trim completion -- update DB and UI."""
+        if not self._viewing_rec_id:
+            return
+
+        # Update duration in database
+        self.db.update_recording_status(
+            self._viewing_rec_id,
+            status="completed",
+            duration=new_duration,
+        )
+
+        # Refresh the meeting header to show new duration
+        self._update_meeting_header(self._viewing_rec_id)
+
+        # Reload the audio player with trimmed audio
+        rec = self.db.get_recording(self._viewing_rec_id)
+        if rec:
+            audio_path = rec.get("stereo_path")
+            if not audio_path or not os.path.exists(audio_path):
+                audio_path = rec.get("mic_path")
+            if audio_path and os.path.exists(audio_path):
+                self.audio_player.load_audio(audio_path)
+
+        # Notify history panel to refresh
+        if self.on_history_changed:
+            self.on_history_changed()
 
     def _get_exportable_content(self, fmt: str) -> str:
         """Build exportable content string from current view.
@@ -1100,6 +1172,7 @@ class MiddlePanel(QWidget):
         # Disable Transcript and Enhanced tabs
         self.transcript_btn.setEnabled(False)
         self.enhanced_btn.setEnabled(False)
+        self.trim_btn.setEnabled(False)
         self.transcribe_btn.setEnabled(False)
 
         # Load notes
@@ -1137,6 +1210,7 @@ class MiddlePanel(QWidget):
         # Enable all tabs
         self.transcript_btn.setEnabled(True)
         self.enhanced_btn.setEnabled(True)
+        self.trim_btn.setEnabled(True)
 
         # Load and cache all data
         transcript_data = self.db.get_transcript(rec_id)
@@ -1326,6 +1400,7 @@ class MiddlePanel(QWidget):
         self._cached_utterances = []
         self._cached_speaker_names = {}
         self.diarized_transcript_view.clear()
+        self.trim_view.clear()
 
         # Hide view selector and meeting header, show recording controls
         self.view_selector_widget.setVisible(False)

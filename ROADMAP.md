@@ -2,22 +2,53 @@
 
 ## Recently Completed
 
-### Session: 2026-02-28 (continued)
+### Session: 2026-02-28
 
 **Daily Driver Features:**
-- Auto-transcribe: recordings are automatically sent to Gemini for transcription when you stop recording (configurable in Settings)
-- Meeting notifications: desktop notifications 5 minutes before meetings start (via system tray)
+- Auto-transcribe: recordings automatically sent to Gemini when you stop recording (configurable in Settings)
+- Meeting notifications: desktop notifications 5 minutes before meetings via system tray
 - Recording reminders: persistent notification if a meeting started but you haven't begun recording
 - New Settings UI groups: "Automation" and "Notifications" with granular toggles
 - Notification worker: background thread polls calendar events every 30 seconds
+- Auto-stop recording: detect extended silence and prompt user to stop
+- Gemini model configurability: choose between models (2.5-flash, 2.5-pro, etc.) in Settings
 
-### Session: 2026-02-28
+**Resilience & Recovery:**
+- Robust Google Calendar authentication recovery (handles `invalid_grant` and expired tokens)
+- AI Transcription recovery: regex-based parser extracts utterances even from truncated Gemini responses
+- Migrated task tracking from `beads` to `ticket` (`tk`)
 
-**Resilience & AI Recovery:**
-- Robust Google Calendar authentication recovery (handles `invalid_grant` and expired tokens).
-- AI Transcription recovery: New regex-based parser extracts utterances even from truncated Gemini responses.
-- Migrated task tracking from `beads` to `ticket` (`tk`) for better project hygiene.
-- Large-scale Rust audio capture engine formatting (rustfmt).
+**UI Polish & Layout Overhaul:**
+- Wider left panel with tooltips on truncated items
+- Empty state for middle panel
+- Increased left panel item padding
+- Date grouping headers in meeting list
+- Clearer Today/History tab active state
+- Collapsible recording toolbar
+- Inline dates in Uncategorized section
+- Hide VU meters when not recording
+
+### Session: 2025-12-09 through 2025-12-11
+
+**Meeting Folders (Epic):**
+- Folder-based organization in left panel (replaces flat chronological list)
+- Smart folder suggestions for recurring meetings
+- Search filter within folder view
+- Show unrecorded past meetings in history tree
+
+**Features Added:**
+- Full-text search for transcripts (SQLite FTS)
+- Audio player in transcript view with mixing for playback
+- Transcript export as markdown/plain text
+- Notes/transcript indicators (icons) in history view
+- Notes for unrecorded meetings
+- Audio channel flip / "Set as Me" for speaker assignment
+- File Search duplicate prevention (cleanup on re-transcribe)
+- Delete/suppress meetings from list
+- Respect selected meeting in recording popup
+
+**Code Quality:**
+- Post-AI audit cleanup and project hygiene
 
 ### Session: 2025-12-08
 
@@ -49,7 +80,7 @@
 **Bugs Fixed:**
 - Raw JSON displayed instead of chat bubbles (markdown fence stripping + mode check)
 - "Device removed: None" spam in terminal (filter spurious events)
-- Long meetings truncated mid-transcript (Gemini 2.0-flash 8K token limit → switched to 2.5-flash with 65K limit)
+- Long meetings truncated mid-transcript (Gemini 2.0-flash 8K token limit -> switched to 2.5-flash with 65K limit)
 - Meeting rename not syncing between left panel and header
 
 **Features Added:**
@@ -75,30 +106,41 @@ Users sometimes forget to stop recordings. Currently requires manual ffmpeg trim
 
 ### Medium Priority
 
-#### File Search Duplicate Prevention
-Re-transcribing a meeting uploads a new file to Gemini File Search without removing the old one, causing duplicates.
+#### Speaker Intelligence (Epic)
+Improve speaker identification, attribution, and persistence across meetings.
 
-**Proposed solution:**
-- Check if file deletion API is now available
-- If not, track file IDs and implement cleanup
-- Or use content deduplication on query side
+- **Persistent Speaker Profiles**: Remember speaker name mappings across meetings in the same folder/series. Suggest names from previous meetings.
+- **Utterance Timestamps**: Enable Gemini's audioTimestamp config for playback sync (required for Search & Playback click-to-jump).
+- **Database**: Speaker profiles table linked to folders.
 
-#### D-Bus Rich Notification Actions
-Upgrade from QSystemTrayIcon to D-Bus notifications for action buttons (e.g., "Start Recording" directly from the notification). Linux-only enhancement.
+Blocks: Search, Discovery & Playback.
+
+#### Search, Discovery & Playback (Epic)
+Full-text search across transcripts with integrated audio playback and click-to-jump.
+
+- **Transcript Search**: Search box with full-text search across all transcripts, filtered by date/folder/attendees.
+- **Audio Playback**: Inline player with speed controls and seeking.
+- **Click-to-Jump**: Click utterance to jump audio to that timestamp, highlight currently playing utterance, auto-scroll.
+
+Depends on: Speaker Intelligence (for utterance timestamps).
+
+#### RAG Agent Enhancements - Series Context & Memory (Epic)
+Leverage meeting folders for better AI context and memory.
+
+- **Series-Aware Search**: Search across all meetings in a folder ("What did Sarah and I discuss about the promotion?").
+- **Series Summarization**: Aggregate insights across folder ("What topics come up most in Daily Standup?").
+- **Action Item Tracking**: Track action items across meeting instances, surface incomplete items.
+- **Automatic Context Injection**: Provide agent with summaries from last 2-3 meetings in the same series.
 
 ### Low Priority
 
-#### Gemini Model Configurability
-Allow users to choose between Gemini models (2.5-flash, 2.5-pro, etc.) based on their needs and quota.
-
-#### Auto-Stop Recording
-Detect extended silence and prompt user to stop recording, or auto-stop after configurable threshold.
+#### D-Bus Rich Notification Actions
+Upgrade from QSystemTrayIcon to D-Bus notifications for action buttons (e.g., "Start Recording" directly from the notification). Linux-only enhancement.
 
 ---
 
 ## Known Limitations
 
-- **File Search API**: May not support individual file deletion (needs verification)
 - **Speaker Diarization**: Depends on stereo channel separation; mono recordings get all utterances as "Me"
 - **Output Token Limits**: Even with 2.5-flash (65K tokens), very long meetings (2+ hours) may still truncate
 
@@ -109,10 +151,9 @@ Detect extended silence and prompt user to stop recording, or auto-stop after co
 Ideas captured for future consideration. Not currently scoped or prioritized.
 
 ### Export & Sharing
-- Export meeting notes to Markdown/PDF
+- Export meeting notes to PDF
 - Obsidian vault integration (write .md files to user's vault)
 - Share meeting summary via email/Slack
-- Copy transcript to clipboard with formatting
 
 ### Action Item Tracking
 - Standalone "Action Items" view across all meetings
@@ -137,6 +178,22 @@ Ideas captured for future consideration. Not currently scoped or prioritized.
 
 ## Completed Milestones
 
+### V8 - Organization & Polish (Dec 2025 - Feb 2026)
+- Meeting folders with smart suggestions for recurring meetings
+- Full-text transcript search
+- Audio player in transcript view
+- Transcript export (markdown/plain text)
+- Notes for unrecorded meetings
+- Audio channel flip / "Set as Me"
+- File Search duplicate prevention
+- Delete/suppress meetings
+- Auto-stop recording on extended silence
+- Gemini model configurability
+- UI polish overhaul (layout, spacing, indicators)
+- Auto-transcribe after recording stops
+- Meeting notifications via system tray
+- Recording reminders
+
 ### V7 - Daily Driver (Feb 2026)
 - Auto-transcribe after recording stops
 - Meeting notifications via system tray
@@ -145,7 +202,7 @@ Ideas captured for future consideration. Not currently scoped or prioritized.
 
 ### V6 - Audio Improvements (Dec 2025)
 - Seamless mic switching during recording
-- WAV→FLAC compression after transcription
+- WAV->FLAC compression after transcription
 - Background compression worker
 
 ### V5 - Google Calendar Integration (Dec 2025)

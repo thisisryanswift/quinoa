@@ -7,6 +7,7 @@ from typing import Any
 
 from google import genai
 from google.genai import types
+from google.genai.errors import ClientError
 
 from quinoa.config import config
 from quinoa.constants import GEMINI_MODEL_SEARCH
@@ -220,8 +221,16 @@ When answering:
                 )
             except Exception as e:
                 # If the configured model doesn't support tools, retry with the
-                # known-good default search model
-                if model != GEMINI_MODEL_SEARCH and "tool" in str(e).lower():
+                # known-good default search model.
+                # The SDK raises ClientError (4xx) for unsupported tool/model
+                # combinations. We also check message keywords as a fallback
+                # in case the error comes as a different exception type.
+                is_tool_error = isinstance(e, ClientError)
+                if not is_tool_error:
+                    error_text = str(e).lower()
+                    is_tool_error = "tool" in error_text or "function" in error_text
+
+                if model != GEMINI_MODEL_SEARCH and is_tool_error:
                     logger.warning(
                         "Model %s doesn't support tools, falling back to %s",
                         model,
