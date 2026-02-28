@@ -1,6 +1,6 @@
 ---
 id: quinoa-3dm
-status: open
+status: closed
 deps: []
 links: []
 created: 2025-12-09T14:49:01.349216731-05:00

@@ -70,6 +70,51 @@ class SettingsDialog(QDialog):
 
         layout.addWidget(file_search_group)
 
+        # Automation settings group
+        automation_group = QGroupBox("Automation")
+        automation_layout = QVBoxLayout(automation_group)
+
+        self.auto_transcribe_checkbox = QCheckBox("Auto-transcribe after recording stops")
+        self.auto_transcribe_checkbox.setChecked(config.get("auto_transcribe", True))
+        automation_layout.addWidget(self.auto_transcribe_checkbox)
+
+        auto_transcribe_info = QLabel(
+            "When enabled, recordings are automatically sent to Gemini\n"
+            "for transcription as soon as you stop recording."
+        )
+        auto_transcribe_info.setStyleSheet("color: #888; font-size: 11px;")
+        automation_layout.addWidget(auto_transcribe_info)
+
+        layout.addWidget(automation_group)
+
+        # Notification settings group
+        notification_group = QGroupBox("Notifications")
+        notification_layout = QVBoxLayout(notification_group)
+
+        self.notifications_checkbox = QCheckBox("Show meeting notifications")
+        self.notifications_checkbox.setChecked(config.get("notifications_enabled", True))
+        notification_layout.addWidget(self.notifications_checkbox)
+
+        self.recording_reminder_checkbox = QCheckBox("Remind me to record when a meeting starts")
+        self.recording_reminder_checkbox.setChecked(config.get("recording_reminder_enabled", True))
+        notification_layout.addWidget(self.recording_reminder_checkbox)
+
+        self.notify_video_only_checkbox = QCheckBox(
+            "Only notify for meetings with video links (Meet/Zoom/Teams)"
+        )
+        self.notify_video_only_checkbox.setChecked(config.get("notify_video_only", True))
+        notification_layout.addWidget(self.notify_video_only_checkbox)
+
+        notification_info = QLabel(
+            "Notifications require Google Calendar to be connected.\n"
+            "Recording reminders appear when a meeting starts and\n"
+            "you haven't begun recording yet."
+        )
+        notification_info.setStyleSheet("color: #888; font-size: 11px;")
+        notification_layout.addWidget(notification_info)
+
+        layout.addWidget(notification_group)
+
         # Google Calendar settings group
         calendar_group = QGroupBox("Google Calendar")
         calendar_layout = QVBoxLayout(calendar_group)
@@ -141,6 +186,10 @@ class SettingsDialog(QDialog):
         config.set("api_key", api_key)
         config.set("output_dir", output_dir)
         config.set("file_search_enabled", self.file_search_checkbox.isChecked())
+        config.set("auto_transcribe", self.auto_transcribe_checkbox.isChecked())
+        config.set("notifications_enabled", self.notifications_checkbox.isChecked())
+        config.set("recording_reminder_enabled", self.recording_reminder_checkbox.isChecked())
+        config.set("notify_video_only", self.notify_video_only_checkbox.isChecked())
         self.accept()
 
     def _update_calendar_status(self) -> None:

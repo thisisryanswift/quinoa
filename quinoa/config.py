@@ -28,6 +28,13 @@ DEFAULT_CONFIG = {
     "file_search_enabled": False,  # User opt-in
     "file_search_delay_minutes": 5,  # Delay before sync
     "calendar_auth_expired": False,  # True if refresh failed
+    # Automation
+    "auto_transcribe": True,  # Transcribe automatically after recording stops
+    # Notifications
+    "notifications_enabled": True,  # Show meeting notifications
+    "recording_reminder_enabled": True,  # Warn if meeting started but not recording
+    "reminder_grace_period_minutes": 2,  # Minutes after meeting start before reminder
+    "notify_video_only": True,  # Only notify for meetings with video links
 }
 
 

@@ -8,6 +8,7 @@ from PyQt6.QtWidgets import QMainWindow, QSplitter
 
 from quinoa.audio.compression_worker import CompressionWorker
 from quinoa.calendar import is_authenticated as calendar_is_authenticated
+from quinoa.calendar.notification_worker import NotificationWorker
 from quinoa.calendar.sync_worker import CalendarSyncWorker
 from quinoa.config import config
 from quinoa.constants import (
@@ -47,6 +48,9 @@ class MainWindow(QMainWindow):
 
         # Calendar sync worker (initialized later if authenticated)
         self._calendar_sync_worker: CalendarSyncWorker | None = None
+
+        # Notification worker (initialized later if calendar is authenticated)
+        self._notification_worker: NotificationWorker | None = None
 
         # Compression worker (for converting WAV -> FLAC after transcription)
         self._compression_worker: CompressionWorker | None = None
@@ -120,6 +124,9 @@ class MainWindow(QMainWindow):
 
         # Initialize Calendar sync if authenticated
         self._init_calendar_sync()
+
+        # Initialize notification worker if calendar is authenticated
+        self._init_notification_worker()
 
         # Initialize compression worker for background WAV -> FLAC conversion
         self._init_compression_worker()
@@ -271,6 +278,61 @@ class MainWindow(QMainWindow):
             self._calendar_sync_worker = None
             logger.info("Calendar sync worker stopped")
 
+    def _init_notification_worker(self) -> None:
+        """Initialize the notification worker if calendar is authenticated."""
+        if self._notification_worker is not None:
+            logger.debug("Notification worker already running")
+            return
+
+        if not calendar_is_authenticated():
+            logger.debug("Notification worker not initialized: calendar not authenticated")
+            return
+
+        try:
+            self._notification_worker = NotificationWorker(self.db)
+            self._notification_worker.notify.connect(self._on_meeting_notification)
+            self._notification_worker.recording_reminder.connect(self._on_recording_reminder)
+
+            # Feed recording state to the notification worker
+            self.middle_panel.recording_state_changed.connect(
+                self._notification_worker.set_recording_state
+            )
+
+            # Connect tray icon click to show window
+            if self.tray_manager.tray_icon:
+                self.tray_manager.tray_icon.messageClicked.connect(self._on_notification_clicked)
+
+            self._notification_worker.start()
+            logger.info("Notification worker started")
+        except Exception as e:
+            logger.error("Failed to initialize notification worker: %s", e)
+            self._notification_worker = None
+
+    def _stop_notification_worker(self) -> None:
+        """Stop the notification worker."""
+        if self._notification_worker:
+            self._notification_worker.stop()
+            self._notification_worker.wait(2000)
+            self._notification_worker = None
+            logger.info("Notification worker stopped")
+
+    def _on_meeting_notification(self, title: str, message: str, duration_ms: int) -> None:
+        """Handle meeting notification from worker."""
+        self.tray_manager.show_message(title, message, duration_ms)
+
+    def _on_recording_reminder(self, event_id: str, title: str) -> None:
+        """Handle recording reminder — meeting started but not recording."""
+        self.tray_manager.show_message(
+            "Not Recording",
+            f'Your meeting "{title}" has started.\nClick to open Quinoa.',
+            10000,  # Persistent-ish: 10 seconds
+        )
+
+    def _on_notification_clicked(self) -> None:
+        """Handle user clicking a notification — show and activate the window."""
+        self.show()
+        self.activateWindow()
+
     def _init_compression_worker(self) -> None:
         """Initialize background compression worker."""
         try:
@@ -321,6 +383,8 @@ class MainWindow(QMainWindow):
         """Handle calendar connection from settings dialog."""
         # Start the sync worker
         self._init_calendar_sync()
+        # Start notification worker
+        self._init_notification_worker()
         # Trigger immediate sync
         if self._calendar_sync_worker:
             self._calendar_sync_worker.sync_now()
@@ -328,6 +392,7 @@ class MainWindow(QMainWindow):
     def _on_calendar_disconnected(self) -> None:
         """Handle calendar disconnection from settings dialog."""
         self._stop_calendar_sync()
+        self._stop_notification_worker()
         # Clear calendar events from database
         self.db.clear_calendar_events()
         # Refresh left panel
@@ -419,6 +484,8 @@ class MainWindow(QMainWindow):
                 self._sync_worker.wait(2000)  # Wait up to 2 seconds
             # Stop calendar sync worker
             self._stop_calendar_sync()
+            # Stop notification worker
+            self._stop_notification_worker()
             # Stop compression worker
             self._stop_compression_worker()
             # Stop device monitor

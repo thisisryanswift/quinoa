@@ -1498,6 +1498,12 @@ class MiddlePanel(QWidget):
         if self.on_history_changed:
             self.on_history_changed()
 
+        # Auto-transcribe if enabled
+        if config.get("auto_transcribe", True) and config.get("api_key"):
+            logger.info("Auto-transcribe: starting transcription for %s", rec_id)
+            # Short delay to let UI settle before starting transcription
+            QTimer.singleShot(500, self._start_transcription)
+
     def _auto_save_notes(self):
         """Auto-save notes during recording."""
         if self.recording_session and self.current_rec_id:

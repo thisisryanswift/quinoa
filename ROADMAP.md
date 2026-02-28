@@ -2,6 +2,15 @@
 
 ## Recently Completed
 
+### Session: 2026-02-28 (continued)
+
+**Daily Driver Features:**
+- Auto-transcribe: recordings are automatically sent to Gemini for transcription when you stop recording (configurable in Settings)
+- Meeting notifications: desktop notifications 5 minutes before meetings start (via system tray)
+- Recording reminders: persistent notification if a meeting started but you haven't begun recording
+- New Settings UI groups: "Automation" and "Notifications" with granular toggles
+- Notification worker: background thread polls calendar events every 30 seconds
+
 ### Session: 2026-02-28
 
 **Resilience & AI Recovery:**
@@ -55,14 +64,6 @@
 
 ### High Priority
 
-#### Audio Channel Flip / "Set as Me"
-When Gemini assigns the wrong speaker as "Me" (e.g., stereo channels are swapped), users need a way to designate which speaker is actually them.
-
-**Proposed solution:** Add "Set as Me" option in speaker menu that:
-- Updates the `is_me` flag for styling
-- Persists the choice to database
-- Re-renders transcript with correct alignment
-
 #### Trim Recording UI
 Users sometimes forget to stop recordings. Currently requires manual ffmpeg trimming.
 
@@ -81,6 +82,9 @@ Re-transcribing a meeting uploads a new file to Gemini File Search without remov
 - Check if file deletion API is now available
 - If not, track file IDs and implement cleanup
 - Or use content deduplication on query side
+
+#### D-Bus Rich Notification Actions
+Upgrade from QSystemTrayIcon to D-Bus notifications for action buttons (e.g., "Start Recording" directly from the notification). Linux-only enhancement.
 
 ### Low Priority
 
@@ -132,6 +136,12 @@ Ideas captured for future consideration. Not currently scoped or prioritized.
 ---
 
 ## Completed Milestones
+
+### V7 - Daily Driver (Feb 2026)
+- Auto-transcribe after recording stops
+- Meeting notifications via system tray
+- Recording reminders when meetings start
+- Settings UI for automation and notification preferences
 
 ### V6 - Audio Improvements (Dec 2025)
 - Seamless mic switching during recording
