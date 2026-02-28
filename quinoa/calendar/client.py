@@ -64,11 +64,10 @@ class CalendarClient:
         all_events = []
 
         for cal_id in calendar_ids:
-            try:
-                events = self._fetch_calendar_events(cal_id, start_time, end_time, video_only)
-                all_events.extend(events)
-            except Exception as e:
-                logger.error("Failed to fetch events from calendar %s: %s", cal_id, e)
+            # We don't catch exceptions here anymore so they can bubble up to workers
+            # (especially auth errors like invalid_grant)
+            events = self._fetch_calendar_events(cal_id, start_time, end_time, video_only)
+            all_events.extend(events)
 
         # Sort by start time
         all_events.sort(key=lambda e: e["start_time"])

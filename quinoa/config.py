@@ -27,6 +27,7 @@ DEFAULT_CONFIG = {
     # File Search settings
     "file_search_enabled": False,  # User opt-in
     "file_search_delay_minutes": 5,  # Delay before sync
+    "calendar_auth_expired": False,  # True if refresh failed
 }
 
 

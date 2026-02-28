@@ -1,15 +1,15 @@
 #[cfg(feature = "real-audio")]
-use pipewire as pw;
+use crate::{Device, DeviceType};
 #[cfg(feature = "real-audio")]
-use pipewire::main_loop::MainLoop;
+use pipewire as pw;
 #[cfg(feature = "real-audio")]
 use pipewire::context::Context;
 #[cfg(feature = "real-audio")]
-use std::sync::{Arc, Mutex};
-#[cfg(feature = "real-audio")]
-use crate::{Device, DeviceType};
+use pipewire::main_loop::MainLoop;
 #[cfg(feature = "real-audio")]
 use serde::Deserialize;
+#[cfg(feature = "real-audio")]
+use std::sync::{Arc, Mutex};
 
 /// Helper struct for parsing PipeWire default device JSON
 #[cfg(feature = "real-audio")]
@@ -34,19 +34,27 @@ fn parse_default_device(json_val: &str) -> Option<String> {
 pub fn list_devices_pw() -> Result<Vec<Device>, String> {
     pw::init();
 
-    let mainloop = MainLoop::new(None).map_err(|e| format!("Failed to create main loop: {:?}", e))?;
-    let context = Context::new(&mainloop).map_err(|e| format!("Failed to create context: {:?}", e))?;
-    let core = context.connect(None).map_err(|e| format!("Failed to connect to core: {:?}", e))?;
-    let registry = core.get_registry().map_err(|e| format!("Failed to get registry: {:?}", e))?;
+    let mainloop =
+        MainLoop::new(None).map_err(|e| format!("Failed to create main loop: {:?}", e))?;
+    let context =
+        Context::new(&mainloop).map_err(|e| format!("Failed to create context: {:?}", e))?;
+    let core = context
+        .connect(None)
+        .map_err(|e| format!("Failed to connect to core: {:?}", e))?;
+    let registry = core
+        .get_registry()
+        .map_err(|e| format!("Failed to get registry: {:?}", e))?;
     // Get a second registry proxy to use inside the listener to avoid borrow conflicts
-    let registry_binding = core.get_registry().map_err(|e| format!("Failed to get registry binding: {:?}", e))?;
+    let registry_binding = core
+        .get_registry()
+        .map_err(|e| format!("Failed to get registry binding: {:?}", e))?;
 
     let devices = Arc::new(Mutex::new(Vec::new()));
     let devices_clone = devices.clone();
-    
+
     let default_source = Arc::new(Mutex::new(None::<String>));
     let default_sink = Arc::new(Mutex::new(None::<String>));
-    
+
     let default_source_clone = default_source.clone();
     let default_sink_clone = default_sink.clone();
 
@@ -60,15 +68,20 @@ pub fn list_devices_pw() -> Result<Vec<Device>, String> {
         .global(move |global| {
             if let Some(props) = global.props {
                 // Check for Metadata interface to find defaults
-                if global.type_ == pipewire::types::ObjectType::Metadata && props.get("metadata.name") == Some("default") {
-                    if let Ok(metadata) = registry_binding.bind::<pipewire::metadata::Metadata, _>(&global) {
+                if global.type_ == pipewire::types::ObjectType::Metadata
+                    && props.get("metadata.name") == Some("default")
+                {
+                    if let Ok(metadata) =
+                        registry_binding.bind::<pipewire::metadata::Metadata, _>(&global)
+                    {
                         let default_source_clone = default_source_clone.clone();
                         let default_sink_clone = default_sink_clone.clone();
-                        
+
                         let listener = metadata
                             .add_listener_local()
                             .property(move |subject, key, _type, value| {
-                                if subject == 0 { // Global settings
+                                if subject == 0 {
+                                    // Global settings
                                     if key == Some("default.audio.source") {
                                         if let Some(json_val) = value {
                                             if let Some(name) = parse_default_device(json_val) {
@@ -90,13 +103,13 @@ pub fn list_devices_pw() -> Result<Vec<Device>, String> {
                                 0
                             })
                             .register();
-                            
+
                         if let Ok(mut guard) = metadata_listener_holder_clone.lock() {
                             *guard = Some((metadata, listener));
                         }
                     }
                 }
-            
+
                 // Check for media.class to identify sources and sinks
                 if let Some(media_class) = props.get("media.class") {
                     let device_type = if media_class == "Audio/Source" {
@@ -127,9 +140,8 @@ pub fn list_devices_pw() -> Result<Vec<Device>, String> {
                             .unwrap_or(false);
 
                         // Get bluetooth profile if available
-                        let bluetooth_profile = props
-                            .get("api.bluez5.profile")
-                            .map(|s| s.to_string());
+                        let bluetooth_profile =
+                            props.get("api.bluez5.profile").map(|s| s.to_string());
 
                         // Default values for now - getting actual format requires more queries
                         let sample_rate = 48000;
@@ -172,9 +184,15 @@ pub fn list_devices_pw() -> Result<Vec<Device>, String> {
 
     // Post-process to set is_default
     let mut result = devices.lock().expect("devices mutex poisoned").clone();
-    let def_source = default_source.lock().expect("default_source mutex poisoned").clone();
-    let def_sink = default_sink.lock().expect("default_sink mutex poisoned").clone();
-    
+    let def_source = default_source
+        .lock()
+        .expect("default_source mutex poisoned")
+        .clone();
+    let def_sink = default_sink
+        .lock()
+        .expect("default_sink mutex poisoned")
+        .clone();
+
     for device in &mut result {
         if device.device_type == DeviceType::Microphone {
             if let Some(ref def) = def_source {

@@ -149,14 +149,19 @@ class SettingsDialog(QDialog):
             email = get_user_email()
             if email:
                 self.calendar_status_label.setText(f"Connected as {email}")
-            else:
-                self.calendar_status_label.setText("Connected")
-            self.calendar_status_label.setStyleSheet("color: #4CAF50;")  # Green
-            self.calendar_connect_btn.setText("Disconnect")
+                self.calendar_status_label.setStyleSheet("color: #4CAF50;")  # Green
+                self.calendar_connect_btn.setText("Disconnect")
+                return
+
+        # If we get here, either we aren't authenticated or get_user_email failed
+        if config.get("calendar_auth_expired", False):
+            self.calendar_status_label.setText("Authentication expired")
+            self.calendar_status_label.setStyleSheet("color: #f44336;")  # Red
         else:
             self.calendar_status_label.setText("Not connected")
             self.calendar_status_label.setStyleSheet("color: #888;")
-            self.calendar_connect_btn.setText("Connect Calendar")
+
+        self.calendar_connect_btn.setText("Connect Calendar")
 
     def _on_calendar_btn_clicked(self) -> None:
         """Handle calendar connect/disconnect button click."""

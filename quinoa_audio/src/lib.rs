@@ -1,9 +1,9 @@
 use pyo3::prelude::*;
 
-mod device;
 mod capture;
+mod device;
 
-use capture::session::{start_recording_impl, RecordingConfig, RecordingSession, AudioEvent};
+use capture::session::{start_recording_impl, AudioEvent, RecordingConfig, RecordingSession};
 #[cfg(feature = "real-audio")]
 use device::monitor::start_monitoring;
 
@@ -56,7 +56,7 @@ impl DeviceMonitor {
             let _ = tx.send(());
         }
         if let Some(handle) = self.thread_handle.take() {
-             Python::with_gil(|py| {
+            Python::with_gil(|py| {
                 py.allow_threads(|| {
                     let _ = handle.join();
                 });
@@ -90,6 +90,7 @@ pub struct Device {
 #[pymethods]
 impl Device {
     #[new]
+    #[pyo3(signature = (id, name, device_type, is_bluetooth, sample_rate, channels, is_default, bluetooth_profile=None))]
     #[allow(clippy::too_many_arguments)]
     fn new(
         id: String,
@@ -185,7 +186,7 @@ fn subscribe_device_changes() -> PyResult<DeviceMonitor> {
             device_id: Some("mock_hotplug_mic".to_string()),
             device_name: Some("Mock Hotplug Microphone".to_string()),
         });
-        
+
         Ok(DeviceMonitor {
             event_rx: Some(Mutex::new(event_rx)),
             thread_handle: None,

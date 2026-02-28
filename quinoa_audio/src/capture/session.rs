@@ -5,6 +5,8 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 
 #[cfg(feature = "real-audio")]
+use crate::capture::encoder::AudioEncoder;
+#[cfg(feature = "real-audio")]
 use pipewire as pw;
 #[cfg(feature = "real-audio")]
 use pw::spa::param::format::{MediaSubtype, MediaType};
@@ -12,8 +14,6 @@ use pw::spa::param::format::{MediaSubtype, MediaType};
 use pw::spa::param::format_utils;
 #[cfg(feature = "real-audio")]
 use pw::spa::pod::Pod;
-#[cfg(feature = "real-audio")]
-use crate::capture::encoder::AudioEncoder;
 
 #[derive(Clone, Debug)]
 #[pyclass]
@@ -36,11 +36,17 @@ pub enum InternalAudioEvent {
     Paused,
     Resumed,
     Error(String),
-    Levels { mic: f32, system: f32 },
+    Levels {
+        mic: f32,
+        system: f32,
+    },
     DeviceLost(String),
     PipeWireDisconnected,
     MicSwitched(String),
-    MicSwitchFailed { requested: String, fallback: Option<String> },
+    MicSwitchFailed {
+        requested: String,
+        fallback: Option<String>,
+    },
 }
 
 impl From<InternalAudioEvent> for AudioEvent {
@@ -109,11 +115,17 @@ impl From<InternalAudioEvent> for AudioEvent {
                 message: None,
                 device_id: Some(id),
             },
-            InternalAudioEvent::MicSwitchFailed { requested, fallback } => AudioEvent {
+            InternalAudioEvent::MicSwitchFailed {
+                requested,
+                fallback,
+            } => AudioEvent {
                 type_: "mic_switch_failed".to_string(),
                 mic_level: None,
                 system_level: None,
-                message: Some(format!("Failed to switch to {}. Fallback: {:?}", requested, fallback)),
+                message: Some(format!(
+                    "Failed to switch to {}. Fallback: {:?}",
+                    requested, fallback
+                )),
                 device_id: fallback,
             },
         }
@@ -172,7 +184,7 @@ impl RecordingSession {
         if let Some(tx) = self.command_tx.take() {
             let _ = tx.send(AudioCommand::Stop);
         }
-        
+
         if let Some(handle) = self.thread_handle.take() {
             // Release GIL to allow thread to join without deadlock if it calls back into Python
             Python::with_gil(|py| {
@@ -186,16 +198,24 @@ impl RecordingSession {
 
     fn pause(&self) -> PyResult<()> {
         if let Some(tx) = &self.command_tx {
-            tx.send(AudioCommand::Pause)
-                .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to send pause command: {}", e)))?;
+            tx.send(AudioCommand::Pause).map_err(|e| {
+                pyo3::exceptions::PyRuntimeError::new_err(format!(
+                    "Failed to send pause command: {}",
+                    e
+                ))
+            })?;
         }
         Ok(())
     }
 
     fn resume(&self) -> PyResult<()> {
         if let Some(tx) = &self.command_tx {
-            tx.send(AudioCommand::Resume)
-                .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to send resume command: {}", e)))?;
+            tx.send(AudioCommand::Resume).map_err(|e| {
+                pyo3::exceptions::PyRuntimeError::new_err(format!(
+                    "Failed to send resume command: {}",
+                    e
+                ))
+            })?;
         }
         Ok(())
     }
@@ -215,7 +235,12 @@ impl RecordingSession {
     fn switch_mic(&self, new_device_id: String) -> PyResult<()> {
         if let Some(tx) = &self.command_tx {
             tx.send(AudioCommand::SwitchMic(new_device_id))
-                .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to send switch_mic command: {}", e)))?;
+                .map_err(|e| {
+                    pyo3::exceptions::PyRuntimeError::new_err(format!(
+                        "Failed to send switch_mic command: {}",
+                        e
+                    ))
+                })?;
         }
         Ok(())
     }
@@ -224,9 +249,9 @@ impl RecordingSession {
 pub fn start_recording_impl(config: RecordingConfig) -> PyResult<RecordingSession> {
     let (command_tx, command_rx) = channel();
     let (event_tx, event_rx) = channel();
-    
+
     let config_clone = config.clone();
-    
+
     let handle = thread::spawn(move || {
         #[cfg(feature = "real-audio")]
         {
@@ -240,17 +265,23 @@ pub fn start_recording_impl(config: RecordingConfig) -> PyResult<RecordingSessio
             // Mock implementation: just wait for stop signal
             println!("Mock recording started for config: {:?}", config_clone);
             let _ = event_tx.send(InternalAudioEvent::Started);
-            
+
             let mut is_paused = false;
             let mut current_mic = config_clone.mic_device_id.clone();
             loop {
                 // Simulate some levels (only when not paused)
                 if !is_paused {
-                    let _ = event_tx.send(InternalAudioEvent::Levels { mic: 0.5, system: 0.2 });
+                    let _ = event_tx.send(InternalAudioEvent::Levels {
+                        mic: 0.5,
+                        system: 0.2,
+                    });
                 } else {
-                    let _ = event_tx.send(InternalAudioEvent::Levels { mic: 0.0, system: 0.0 });
+                    let _ = event_tx.send(InternalAudioEvent::Levels {
+                        mic: 0.0,
+                        system: 0.0,
+                    });
                 }
-                
+
                 // Check for commands
                 match command_rx.recv_timeout(std::time::Duration::from_millis(100)) {
                     Ok(AudioCommand::Stop) => {
@@ -331,7 +362,13 @@ fn create_stream(
     levels: Arc<SharedLevels>,
     is_mic: bool,
     is_paused: Arc<Mutex<bool>>,
-) -> Result<(pw::stream::Stream, pw::stream::StreamListener<StreamUserData>), String> {
+) -> Result<
+    (
+        pw::stream::Stream,
+        pw::stream::StreamListener<StreamUserData>,
+    ),
+    String,
+> {
     use std::mem;
 
     let stream = pw::stream::Stream::new(core, name, properties)
@@ -407,13 +444,15 @@ fn create_stream(
                         let start = n * mem::size_of::<f32>();
                         let end = start + mem::size_of::<f32>();
                         let bytes = &samples[start..end];
-                        f32::from_le_bytes(bytes.try_into().expect("sample slice should be 4 bytes"))
+                        f32::from_le_bytes(
+                            bytes.try_into().expect("sample slice should be 4 bytes"),
+                        )
                     })
                     .collect();
 
                 // Calculate peak level
                 let peak = float_samples.iter().map(|s| s.abs()).fold(0.0, f32::max);
-                
+
                 // Update shared levels
                 if user_data.is_mic {
                     if let Ok(mut level) = user_data.levels.mic_level.lock() {
@@ -481,7 +520,10 @@ enum SessionError {
 /// State for managing mic stream that can be switched
 #[cfg(feature = "real-audio")]
 struct MicStreamState {
-    stream: Option<(pw::stream::Stream, pw::stream::StreamListener<StreamUserData>)>,
+    stream: Option<(
+        pw::stream::Stream,
+        pw::stream::StreamListener<StreamUserData>,
+    )>,
     current_device_id: Option<String>,
 }
 
@@ -493,14 +535,29 @@ fn create_mic_stream(
     encoder: Arc<Mutex<Option<AudioEncoder>>>,
     levels: Arc<SharedLevels>,
     is_paused: Arc<Mutex<bool>>,
-) -> Result<(pw::stream::Stream, pw::stream::StreamListener<StreamUserData>), String> {
+) -> Result<
+    (
+        pw::stream::Stream,
+        pw::stream::StreamListener<StreamUserData>,
+    ),
+    String,
+> {
     let props = pw::properties::properties! {
         *pw::keys::MEDIA_TYPE => "Audio",
         *pw::keys::MEDIA_CATEGORY => "Capture",
         *pw::keys::MEDIA_ROLE => "Communication",
         "target.object" => mic_id,
     };
-    create_stream(core, "quinoa-mic", props, output_path, encoder, levels, true, is_paused)
+    create_stream(
+        core,
+        "quinoa-mic",
+        props,
+        output_path,
+        encoder,
+        levels,
+        true,
+        is_paused,
+    )
 }
 
 #[cfg(feature = "real-audio")]
@@ -515,19 +572,23 @@ fn connect_and_run(
         .map_err(|e| SessionError::Fatal(format!("Failed to create main loop: {:?}", e)))?;
     let context = pw::context::Context::new(&mainloop)
         .map_err(|e| SessionError::Fatal(format!("Failed to create context: {:?}", e)))?;
-    
+
     // If connection fails, it might be recoverable (daemon restarting)
-    let core = context.connect(None)
+    let core = context
+        .connect(None)
         .map_err(|e| SessionError::Recoverable(format!("Failed to connect to core: {:?}", e)))?;
 
     // Add listener for core events (disconnect)
     let _core_listener = core
         .add_listener_local()
         .error(|id, seq, res, message| {
-            eprintln!("PipeWire error: id={}, seq={}, res={}, msg={}", id, seq, res, message);
+            eprintln!(
+                "PipeWire error: id={}, seq={}, res={}, msg={}",
+                id, seq, res, message
+            );
         })
         .register();
-        
+
     // We can't easily detect disconnect via the rust bindings' listener yet without more boilerplate,
     // but if the mainloop quits unexpectedly, we can treat it as a disconnect.
 
@@ -563,14 +624,24 @@ fn connect_and_run(
 
     // Create initial mic stream if configured
     if let Some(ref mic_id) = config.mic_device_id {
-        match create_mic_stream(&core, mic_id, mic_output_path.clone(), mic_encoder.clone(), levels.clone(), is_paused.clone()) {
+        match create_mic_stream(
+            &core,
+            mic_id,
+            mic_output_path.clone(),
+            mic_encoder.clone(),
+            levels.clone(),
+            is_paused.clone(),
+        ) {
             Ok(stream_handle) => {
                 if let Ok(mut state) = mic_state.lock() {
                     state.stream = Some(stream_handle);
                 }
             }
             Err(e) => {
-                return Err(SessionError::Recoverable(format!("Failed to create mic stream: {}", e)));
+                return Err(SessionError::Recoverable(format!(
+                    "Failed to create mic stream: {}",
+                    e
+                )));
             }
         }
     }
@@ -587,8 +658,21 @@ fn connect_and_run(
             *pw::keys::STREAM_CAPTURE_SINK => "true",
         };
         let path = output_dir.join("system.wav");
-        Some(create_stream(&core, "quinoa-sys", props, path, sys_encoder, levels.clone(), false, is_paused.clone())
-            .map_err(|e| SessionError::Recoverable(format!("Failed to create system stream: {}", e)))?)
+        Some(
+            create_stream(
+                &core,
+                "quinoa-sys",
+                props,
+                path,
+                sys_encoder,
+                levels.clone(),
+                false,
+                is_paused.clone(),
+            )
+            .map_err(|e| {
+                SessionError::Recoverable(format!("Failed to create system stream: {}", e))
+            })?,
+        )
     } else {
         None
     };
@@ -599,11 +683,11 @@ fn connect_and_run(
     let levels_clone = levels.clone();
     let command_rx_clone = command_rx.clone();
     let is_paused_clone = is_paused.clone();
-    
+
     // We need to know if we quit because of a stop command or an error
     let stop_requested = Arc::new(Mutex::new(false));
     let stop_requested_clone = stop_requested.clone();
-    
+
     // Channel for mic switch requests (processed in main loop after timer signals)
     let pending_mic_switch: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
     let pending_mic_switch_clone = pending_mic_switch.clone();
@@ -642,11 +726,11 @@ fn connect_and_run(
                 }
             }
         }
-        
+
         // Send levels
         let mut mic_peak = 0.0;
         let mut sys_peak = 0.0;
-        
+
         if let Ok(mut level) = levels_clone.mic_level.lock() {
             mic_peak = *level;
             *level = 0.0; // Reset for next window
@@ -655,10 +739,10 @@ fn connect_and_run(
             sys_peak = *level;
             *level = 0.0; // Reset for next window
         }
-        
-        let _ = event_tx_clone.send(InternalAudioEvent::Levels { 
-            mic: mic_peak, 
-            system: sys_peak 
+
+        let _ = event_tx_clone.send(InternalAudioEvent::Levels {
+            mic: mic_peak,
+            system: sys_peak,
         });
     });
 
@@ -668,29 +752,36 @@ fn connect_and_run(
     // Main loop with mic switch handling
     loop {
         mainloop.run();
-        
+
         // Check if we're stopping
         if let Ok(stop) = stop_requested.lock() {
             if *stop {
                 break;
             }
         }
-        
+
         // Check for pending mic switch
         let switch_request = if let Ok(mut pending) = pending_mic_switch.lock() {
             pending.take()
         } else {
             None
         };
-        
+
         if let Some(new_mic_id) = switch_request {
             // Drop old mic stream
             if let Ok(mut state) = mic_state.lock() {
                 let old_device = state.current_device_id.clone();
                 state.stream = None; // Drop old stream
-                
+
                 // Create new stream with the same encoder
-                match create_mic_stream(&core, &new_mic_id, mic_output_path.clone(), mic_encoder.clone(), levels.clone(), is_paused.clone()) {
+                match create_mic_stream(
+                    &core,
+                    &new_mic_id,
+                    mic_output_path.clone(),
+                    mic_encoder.clone(),
+                    levels.clone(),
+                    is_paused.clone(),
+                ) {
                     Ok(new_stream) => {
                         state.stream = Some(new_stream);
                         state.current_device_id = Some(new_mic_id.clone());
@@ -700,7 +791,14 @@ fn connect_and_run(
                         eprintln!("Failed to switch mic to {}: {}", new_mic_id, e);
                         // Try to reconnect to old mic
                         if let Some(ref old_id) = old_device {
-                            match create_mic_stream(&core, old_id, mic_output_path.clone(), mic_encoder.clone(), levels.clone(), is_paused.clone()) {
+                            match create_mic_stream(
+                                &core,
+                                old_id,
+                                mic_output_path.clone(),
+                                mic_encoder.clone(),
+                                levels.clone(),
+                                is_paused.clone(),
+                            ) {
                                 Ok(old_stream) => {
                                     state.stream = Some(old_stream);
                                     // Keep old device ID
@@ -721,7 +819,7 @@ fn connect_and_run(
             // Continue the main loop
             continue;
         }
-        
+
         // If we get here without a switch request or stop, something unexpected happened
         break;
     }
@@ -746,7 +844,9 @@ fn connect_and_run(
     }
 
     // If we get here and didn't request stop, it means the mainloop quit unexpectedly
-    Err(SessionError::Recoverable("PipeWire mainloop exited unexpectedly".to_string()))
+    Err(SessionError::Recoverable(
+        "PipeWire mainloop exited unexpectedly".to_string(),
+    ))
 }
 
 #[cfg(feature = "real-audio")]
@@ -756,7 +856,7 @@ fn run_audio_thread(
     event_tx: Sender<InternalAudioEvent>,
 ) -> Result<(), String> {
     let command_rx = Arc::new(Mutex::new(command_rx));
-    
+
     loop {
         match connect_and_run(&config, command_rx.clone(), &event_tx) {
             Ok(()) => {
@@ -773,7 +873,7 @@ fn run_audio_thread(
                 // Recoverable, notify and retry
                 eprintln!("Recoverable audio error: {}. Reconnecting...", e);
                 let _ = event_tx.send(InternalAudioEvent::PipeWireDisconnected);
-                
+
                 // Wait before retrying
                 thread::sleep(std::time::Duration::from_secs(2));
             }

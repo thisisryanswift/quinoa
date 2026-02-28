@@ -10,30 +10,31 @@ Quinoa is a meeting recording and transcription application. It uses:
 - **Google Gemini** for AI transcription
 - **SQLite** for local storage
 
-## Task Management (Beads)
+## Project Management (Ticket)
 
-This project uses **Beads** (`bd`) for task tracking. It provides persistent memory across sessions and helps you find ready-to-work tasks.
+This project uses **Ticket** (`tk`) for task tracking. It provides persistent memory across sessions and helps you find ready-to-work tasks.
 
 ### Core Workflow
-1. **Start of session**: Run `bd ready` to see what to work on.
-2. **During work**: Create issues for new discoveries:
+1. **Start of session**: Run `tk ready` to see what to work on.
+2. **During work**: Create tickets for new discoveries:
    ```bash
-   bd create "Task description" -t bug|feature|task -p 2
+   tk create "Task description"
    ```
-3. **Taking ownership**: Mark issue as in progress:
+3. **Taking ownership**: Mark ticket as in progress:
    ```bash
-   bd update <issue-id> --status in_progress
+   tk start <ticket-id>
    ```
-4. **Completion**: Close with a reason:
+4. **Completion**: Close the ticket:
    ```bash
-   bd close <issue-id> --reason "Completed implementation"
+   tk close <ticket-id>
    ```
 
 ### Commands
-- `bd list`: List all open issues
-- `bd ready`: List unblocked issues ready for work
-- `bd show <id>`: View issue details
-- `bd help`: See all commands
+- `tk ls`: List all open tickets
+- `tk ready`: List unblocked tickets ready for work
+- `tk show <id>`: View ticket details
+- `tk query`: Output tickets as JSON for programmatic filtering
+- `tk help`: See all commands
 
 ## Code Quality Standards
 
@@ -142,7 +143,7 @@ Security best practice - API keys are stored in the system keyring (GNOME Keyrin
 
 ## Remaining Work
 
-Use `bd list` to see all open tasks and `bd ready` to see what is ready to be worked on.
+Use `tk ls` to see all open tasks and `tk ready` to see what is ready to be worked on.
 See `ROADMAP.md` for high-level planning and completed milestones.
 
 ## Troubleshooting

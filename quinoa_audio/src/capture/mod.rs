@@ -1,2 +1,2 @@
-pub mod session;
 pub mod encoder;
+pub mod session;

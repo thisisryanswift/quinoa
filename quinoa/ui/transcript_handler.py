@@ -2,8 +2,38 @@
 
 import json
 import logging
+import re
 
 logger = logging.getLogger("quinoa")
+
+
+def _extract_utterances_from_truncated(json_str: str) -> list[dict]:
+    """Extract utterances from potentially truncated JSON using regex.
+
+    Handles cases where Gemini cuts off mid-response.
+    """
+    utterances = []
+
+    # Match individual utterance objects in the utterances array
+    # This regex finds {"speaker": "...", "text": "..."} patterns
+    utterance_pattern = re.compile(
+        r'\{\s*"speaker"\s*:\s*"([^"]*)"\s*,\s*"text"\s*:\s*"([^"]*)"\s*\}', re.DOTALL
+    )
+
+    for match in utterance_pattern.finditer(json_str):
+        speaker = match.group(1)
+        text = match.group(2)
+        # Unescape common JSON escapes that regex might miss
+        text = text.replace('\\"', '"').replace("\\\\", "\\")
+        utterances.append(
+            {
+                "speaker": speaker,
+                "text": text,
+                "original_speaker": speaker,
+            }
+        )
+
+    return utterances
 
 
 def parse_transcription_result(json_str: str) -> dict:
@@ -52,7 +82,30 @@ def parse_transcription_result(json_str: str) -> dict:
             "action_items": data.get("action_items", []),
             "parse_error": False,
         }
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as e:
+        logger.warning("JSON parse failed at position %d: %s. Attempting recovery...", e.pos, e.msg)
+
+        # Try to extract utterances from truncated JSON
+        utterances = _extract_utterances_from_truncated(cleaned)
+
+        if utterances:
+            logger.info("Recovered %d utterances from truncated response", len(utterances))
+            transcript_lines = []
+            for u in utterances:
+                speaker = u.get("speaker", "Unknown")
+                text = u.get("text", "")
+                transcript_lines.append(f"{speaker}: {text}")
+            transcript = "\n\n".join(transcript_lines)
+
+            return {
+                "utterances": utterances,
+                "transcript": transcript,
+                "summary": "",  # Can't recover summary from truncated response
+                "action_items": [],  # Can't recover action items
+                "parse_error": False,  # We recovered useful data
+            }
+
+        # Complete failure - return raw text
         return {
             "utterances": [],
             "transcript": json_str,

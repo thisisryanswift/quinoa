@@ -5,11 +5,15 @@ import json
 import logging
 import os
 from pathlib import Path
+from typing import Any
 
 import keyring
+from keyring.errors import PasswordDeleteError
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
+
+from quinoa.config import config
 
 logger = logging.getLogger("quinoa")
 
@@ -83,7 +87,7 @@ def _load_tokens() -> dict | None:
     return None
 
 
-def _save_tokens(credentials: Credentials) -> None:
+def _save_tokens(credentials: Any) -> None:
     """Save tokens to keyring."""
     try:
         tokens = {
@@ -109,7 +113,7 @@ def is_authenticated() -> bool:
     return creds is not None and creds.valid
 
 
-def get_credentials() -> Credentials | None:
+def get_credentials() -> Any:
     """Get valid credentials, refreshing if needed.
 
     Returns None if not authenticated or refresh fails.
@@ -130,18 +134,30 @@ def get_credentials() -> Credentials | None:
 
         # Check if expired and refresh
         if creds.expired and creds.refresh_token:
-            logger.info("Refreshing expired calendar credentials...")
-            creds.refresh(Request())
-            _save_tokens(creds)
+            try:
+                logger.info("Refreshing expired calendar credentials...")
+                creds.refresh(Request())
+                _save_tokens(creds)
+            except Exception as e:
+                error_str = str(e).lower()
+                if "invalid_grant" in error_str or "token has been expired" in error_str:
+                    logger.warning("Calendar refresh token invalid/expired. Clearing tokens.")
+                    config.set("calendar_auth_expired", True)
+                    logout()
+                raise
+
+        if creds.valid:
+            config.set("calendar_auth_expired", False)
 
         return creds if creds.valid else None
 
     except Exception as e:
-        logger.error("Failed to get/refresh calendar credentials: %s", e)
+        if not isinstance(e, (KeyError, TypeError)):  # Don't log expected token parsing errors
+            logger.error("Failed to get/refresh calendar credentials: %s", e)
         return None
 
 
-def authenticate() -> Credentials | None:
+def authenticate() -> Any:
     """Run OAuth flow to authenticate with Google Calendar.
 
     Opens a browser window for the user to authorize access.
@@ -161,6 +177,7 @@ def authenticate() -> Credentials | None:
 
         if creds:
             _save_tokens(creds)
+            config.set("calendar_auth_expired", False)
             logger.info("Calendar authentication successful")
             return creds
 
@@ -194,10 +211,11 @@ def get_user_email() -> str | None:
 
 def logout() -> None:
     """Clear stored calendar credentials."""
+    config.set("calendar_auth_expired", False)
     try:
         keyring.delete_password(KEYRING_SERVICE, KEYRING_TOKEN_KEY)
         logger.info("Calendar credentials cleared")
-    except keyring.errors.PasswordDeleteError:
+    except PasswordDeleteError:
         pass  # Already deleted or never existed
     except Exception as e:
         logger.warning("Failed to clear calendar credentials: %s", e)

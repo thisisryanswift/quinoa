@@ -67,3 +67,8 @@ warn_unused_ignores = true
 # Start lenient, tighten over time
 ignore_missing_imports = true
 check_untyped_defs = false
+
+[dependency-groups]
+dev = [
+    "maturin>=1.12.5",
+]

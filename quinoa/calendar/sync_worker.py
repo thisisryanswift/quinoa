@@ -4,7 +4,7 @@ import logging
 
 from PyQt6.QtCore import QMutex, QThread, QWaitCondition, pyqtSignal
 
-from quinoa.calendar.auth import get_credentials, is_authenticated
+from quinoa.calendar.auth import get_credentials, is_authenticated, logout
 from quinoa.calendar.client import CalendarClient
 from quinoa.config import config
 from quinoa.storage.database import Database
@@ -103,5 +103,15 @@ class CalendarSyncWorker(QThread):
             self.events_updated.emit(changes > 0)
 
         except Exception as e:
+            error_str = str(e)
             logger.error("Calendar sync failed: %s", e)
-            self.sync_failed.emit(str(e))
+
+            # Check for invalid_grant - tokens need to be cleared
+            if "invalid_grant" in error_str.lower():
+                logger.warning("Calendar tokens invalid - clearing and signaling re-auth")
+                logout()
+                self.sync_failed.emit(
+                    "Calendar authorization expired. Please re-connect in Settings."
+                )
+            else:
+                self.sync_failed.emit(error_str)

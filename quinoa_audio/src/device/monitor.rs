@@ -6,9 +6,9 @@ use std::thread;
 #[cfg(feature = "real-audio")]
 use pipewire as pw;
 #[cfg(feature = "real-audio")]
-use pipewire::main_loop::MainLoop;
-#[cfg(feature = "real-audio")]
 use pipewire::context::Context;
+#[cfg(feature = "real-audio")]
+use pipewire::main_loop::MainLoop;
 
 use crate::{DeviceEvent, DeviceMonitor};
 
@@ -41,10 +41,16 @@ pub fn start_monitoring() -> PyResult<DeviceMonitor> {
 fn run_monitor_thread(event_tx: Sender<DeviceEvent>, stop_rx: Receiver<()>) -> Result<(), String> {
     pw::init();
 
-    let mainloop = MainLoop::new(None).map_err(|e| format!("Failed to create main loop: {:?}", e))?;
-    let context = Context::new(&mainloop).map_err(|e| format!("Failed to create context: {:?}", e))?;
-    let core = context.connect(None).map_err(|e| format!("Failed to connect to core: {:?}", e))?;
-    let registry = core.get_registry().map_err(|e| format!("Failed to get registry: {:?}", e))?;
+    let mainloop =
+        MainLoop::new(None).map_err(|e| format!("Failed to create main loop: {:?}", e))?;
+    let context =
+        Context::new(&mainloop).map_err(|e| format!("Failed to create context: {:?}", e))?;
+    let core = context
+        .connect(None)
+        .map_err(|e| format!("Failed to connect to core: {:?}", e))?;
+    let registry = core
+        .get_registry()
+        .map_err(|e| format!("Failed to get registry: {:?}", e))?;
 
     let event_tx_clone = event_tx.clone();
     let event_tx_remove = event_tx.clone();
@@ -61,7 +67,7 @@ fn run_monitor_thread(event_tx: Sender<DeviceEvent>, stop_rx: Receiver<()>) -> R
                             .or_else(|| props.get("node.nick"))
                             .or_else(|| props.get("node.name"))
                             .unwrap_or("Unknown Device");
-                            
+
                         let id = props
                             .get("node.name")
                             .map(|s| s.to_string())
@@ -92,10 +98,10 @@ fn run_monitor_thread(event_tx: Sender<DeviceEvent>, stop_rx: Receiver<()>) -> R
             loop_clone.quit();
         }
     });
-    
+
     let timeout = std::time::Duration::from_millis(200);
     timer.update_timer(Some(timeout), Some(timeout));
-    
+
     mainloop.run();
     Ok(())
 }
