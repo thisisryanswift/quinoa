@@ -7,7 +7,7 @@ import uuid
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -20,6 +20,7 @@ from PyQt6.QtWidgets import (
 )
 
 from quinoa.constants import CHAT_MAX_HISTORY, LAYOUT_MARGIN_SMALL
+from quinoa.ui.markdown_converter import markdown_to_html
 
 if TYPE_CHECKING:
     from quinoa.search.chat_worker import ChatWorker
@@ -38,10 +39,13 @@ class MeetingContext:
     folder_name: str | None = None
     attendees: list[str] = field(default_factory=list)
     recent_meetings: list[str] = field(default_factory=list)  # titles with dates
+    summaries: list[dict[str, str]] = field(default_factory=list)  # [{'title': ..., 'summary': ..., 'id': ...}]
 
 
 class ChatMessageWidget(QFrame):
     """Widget for displaying a single chat message."""
+
+    citation_clicked = pyqtSignal(str)  # recording_id
 
     def __init__(
         self,
@@ -59,23 +63,63 @@ class ChatMessageWidget(QFrame):
         layout.setSpacing(4)
 
         # Message content
-        content_label = QLabel(content)
+        content_label = QLabel()
+        if role != "user":
+            content_label.setText(markdown_to_html(content))
+        else:
+            content_label.setText(content)
+
         content_label.setWordWrap(True)
         content_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        content_label.setOpenExternalLinks(True)
         layout.addWidget(content_label)
 
         # Citations if present
         if citations:
-            # Count unique meetings (by title) and total passages
-            unique_meetings = {c.get("title", "Unknown") for c in citations}
-            meeting_count = len(unique_meetings)
-            passage_count = len(citations)
-            meeting_word = "meeting" if meeting_count == 1 else "meetings"
-            passage_word = "passage" if passage_count == 1 else "passages"
-            label_text = f"Sources: {meeting_count} {meeting_word}, {passage_count} {passage_word}"
-            citations_label = QLabel(label_text)
-            citations_label.setStyleSheet("color: #888; font-size: 11px;")
-            layout.addWidget(citations_label)
+            citations_container = QWidget()
+            citations_layout = QHBoxLayout(citations_container)
+            citations_layout.setContentsMargins(0, 4, 0, 0)
+            citations_layout.setSpacing(6)
+            citations_layout.setAlignment(Qt.AlignmentFlag.AlignLeft)
+
+            # Extract unique meetings from citations
+            seen_ids = set()
+            for citation in citations:
+                # Gemini File Search URI usually looks like:
+                # 'fileSearchStores/xxx/documents/meeting_rec_yyy.md'
+                uri = citation.get("uri") or ""
+                rec_id = None
+                if "meeting_" in uri:
+                    rec_id = uri.split("meeting_")[-1].replace(".md", "")
+
+                if rec_id and rec_id not in seen_ids:
+                    seen_ids.add(rec_id)
+                    title = citation.get("title") or "Unknown"
+                    # Remove the 'meeting_' prefix and '.md' suffix if present in title
+                    display_title = title.replace("meeting_", "").replace(".md", "")
+
+                    btn = QPushButton(display_title)
+                    btn.setCursor(Qt.CursorShape.PointingHandCursor)
+                    btn.setToolTip(f"Open {display_title}")
+                    btn.setStyleSheet("""
+                        QPushButton {
+                            background-color: #555;
+                            color: #ddd;
+                            border: none;
+                            border-radius: 4px;
+                            padding: 2px 6px;
+                            font-size: 10px;
+                        }
+                        QPushButton:hover {
+                            background-color: #666;
+                            color: #fff;
+                        }
+                    """)
+                    btn.clicked.connect(lambda checked, rid=rec_id: self.citation_clicked.emit(rid))
+                    citations_layout.addWidget(btn)
+
+            if seen_ids:
+                layout.addWidget(citations_container)
 
         # Style based on role
         if role == "user":
@@ -110,6 +154,8 @@ class ChatMessageWidget(QFrame):
 
 class RightPanel(QWidget):
     """AI Chat panel for searching across meetings."""
+
+    citation_clicked = pyqtSignal(str)  # recording_id
 
     def __init__(
         self,
@@ -361,6 +407,7 @@ class RightPanel(QWidget):
     ) -> None:
         """Add a message to the chat area."""
         msg_widget = ChatMessageWidget(role, content, citations)
+        msg_widget.citation_clicked.connect(self.citation_clicked.emit)
         self.chat_layout.addWidget(msg_widget)
 
         # Scroll to bottom after a brief delay to ensure layout is updated

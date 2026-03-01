@@ -305,7 +305,8 @@ class FileSearchManager:
             "- Cite specific meetings when referencing information\n"
             "- If you can't find relevant information in the meetings, say so clearly\n"
             "- Focus on facts from the meetings, not general knowledge\n"
-            "- When quoting, use the exact text from the transcript"
+            "- When quoting, use the exact text from the transcript\n"
+            "- For questions about tasks, assignments, or requests, prioritize searching the 'Action Items' or 'Notes' sections."
         )
 
         if not meeting_context:
@@ -338,7 +339,12 @@ class FileSearchManager:
             names = ", ".join(meeting_context.attendees)
             context_parts.append(f"Attendees: {names}.")
 
-        if meeting_context.recent_meetings:
+        if hasattr(meeting_context, "summaries") and meeting_context.summaries:
+            context_parts.append("### Memory from previous meetings in this series:")
+            for s in meeting_context.summaries:
+                context_parts.append(f"- {s['title']} ({s['date']}): {s['summary']}")
+
+        elif meeting_context.recent_meetings:
             context_parts.append(
                 "Recent meetings in this series:\n"
                 + "\n".join(f"- {m}" for m in meeting_context.recent_meetings)

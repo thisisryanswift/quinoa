@@ -1912,6 +1912,10 @@ class MiddlePanel(QWidget):
         if self._shutting_down:
             return
 
+        if self._worker and self._worker.isRunning():
+            logger.debug("Transcription already in progress, skipping start")
+            return
+
         if not config.get("api_key"):
             QMessageBox.warning(self, "Missing API Key", "Set your Gemini API Key in Settings.")
             return

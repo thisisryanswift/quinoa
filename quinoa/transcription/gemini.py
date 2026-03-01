@@ -55,7 +55,19 @@ class GeminiTranscriber:
     def transcribe(self, audio_path: str, prompt: str | None = None) -> str:
         # Upload file
         logger.info("Uploading %s...", audio_path)
-        audio_file = self.client.files.upload(file=audio_path)
+
+        try:
+            # Open in binary mode for more robust upload handling by the SDK
+            with open(audio_path, "rb") as f:
+                audio_file = self.client.files.upload(file=f)
+        except Exception as e:
+            # Specific handling for the 8MB granularity bug in some versions of the SDK
+            if "8388608" in str(e) or "granularity" in str(e).lower():
+                logger.warning("Chunk granularity error detected, retrying with raw path...")
+                # Retrying with the raw path sometimes avoids the SDK's internal stream chunking bug
+                audio_file = self.client.files.upload(file=audio_path)
+            else:
+                raise
 
         if not audio_file.uri:
             raise ValueError("Failed to get file URI from upload response")

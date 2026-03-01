@@ -1,6 +1,7 @@
 """Main application window - 3-column layout."""
 
 import logging
+from datetime import datetime
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QKeySequence, QShortcut
@@ -88,6 +89,7 @@ class MainWindow(QMainWindow):
 
         # Right panel - AI Chat
         self.right_panel = RightPanel(db=self.db)
+        self.right_panel.citation_clicked.connect(self.left_panel.select_meeting)
         self.splitter.addWidget(self.right_panel)
 
         # Restore splitter sizes from config or use defaults
@@ -465,18 +467,31 @@ class MainWindow(QMainWindow):
                 # Get recent meetings in the same folder for series context
                 recent = self.db.get_recordings_in_folder(folder_id, limit=5)
                 for r in recent:
-                    if r["id"] != rec_id:
-                        title = r.get("title", "Untitled")
-                        date = r.get("started_at", "")
-                        if date:
-                            try:
-                                from datetime import datetime
+                    if r["id"] == rec_id:
+                        continue
 
-                                dt = datetime.fromisoformat(date) if isinstance(date, str) else date
-                                date = dt.strftime("%b %d, %Y")
-                            except (ValueError, TypeError):
-                                pass
-                        ctx.recent_meetings.append(f"{title} ({date})")
+                    title = r.get("title", "Untitled")
+                    date_raw = r.get("started_at", "")
+                    date_display = date_raw
+                    if date_raw:
+                        try:
+                            dt = datetime.fromisoformat(date_raw) if isinstance(date_raw, str) else date_raw
+                            date_display = dt.strftime("%b %d, %Y")
+                        except (ValueError, TypeError):
+                            pass
+
+                    ctx.recent_meetings.append(f"{title} ({date_display})")
+
+                    # Add summary for the most recent 2 meetings in the series
+                    if len(ctx.summaries) < 2:
+                        transcript = self.db.get_transcript(r["id"])
+                        if transcript and transcript.get("summary"):
+                            ctx.summaries.append({
+                                "id": r["id"],
+                                "title": title,
+                                "date": date_display,
+                                "summary": transcript["summary"]
+                            })
 
         # Resolve attendees from linked calendar event
         event = self.db.get_event_for_recording(rec_id)
@@ -511,6 +526,28 @@ class MainWindow(QMainWindow):
             folder = self.db.get_folder(folder_id)
             if folder:
                 ctx.folder_name = folder.get("name")
+
+                # Get recent meetings in the same folder for series context
+                recent = self.db.get_recordings_in_folder(folder_id, limit=2)
+                for r in recent:
+                    transcript = self.db.get_transcript(r["id"])
+                    if transcript and transcript.get("summary"):
+                        title = r.get("title", "Untitled")
+                        date_raw = r.get("started_at", "")
+                        date_display = date_raw
+                        if date_raw:
+                            try:
+                                dt = datetime.fromisoformat(date_raw) if isinstance(date_raw, str) else date_raw
+                                date_display = dt.strftime("%b %d, %Y")
+                            except (ValueError, TypeError):
+                                pass
+
+                        ctx.summaries.append({
+                            "id": r["id"],
+                            "title": title,
+                            "date": date_display,
+                            "summary": transcript["summary"]
+                        })
 
         # Attendees
         if event.get("attendees"):
