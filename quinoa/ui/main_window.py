@@ -312,6 +312,7 @@ class MainWindow(QMainWindow):
             # Connect tray notification click to show window (via TrayIconManager signal
             # so the connection survives any future icon recreation)
             self.tray_manager.message_clicked.connect(self._on_notification_clicked)
+            self.tray_manager.start_recording_requested.connect(self._on_notification_start_recording)
 
             self._notification_worker.start()
             logger.info("Notification worker started")
@@ -337,7 +338,17 @@ class MainWindow(QMainWindow):
             "Not Recording",
             f'Your meeting "{title}" has started.\nClick to open Quinoa.',
             10000,  # Persistent-ish: 10 seconds
+            event_id=event_id,
+            show_action=True,
         )
+
+    def _on_notification_start_recording(self, event_id: str) -> None:
+        """Handle 'Start Recording' action from a D-Bus notification."""
+        # Ensure window is visible if we're starting a recording
+        self.show()
+        self.activateWindow()
+
+        self.middle_panel.start_recording_for_event(event_id)
 
     def _on_notification_clicked(self) -> None:
         """Handle user clicking a notification — show and activate the window."""
@@ -632,4 +643,6 @@ class MainWindow(QMainWindow):
             self._stop_compression_worker()
             # Stop device monitor
             self.middle_panel.stop_device_monitor()
+            # Clean up D-Bus / tray
+            self.tray_manager.cleanup()
             a0.accept()

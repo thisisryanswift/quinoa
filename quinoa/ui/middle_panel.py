@@ -1531,6 +1531,40 @@ class MiddlePanel(QWidget):
         title = event.get("title") if event else None
         return (event_id, title)
 
+    def start_recording_for_event(self, event_id: str):
+        """Start recording immediately for a specific calendar event (no dialog)."""
+        if self.recording_session:
+            return
+
+        event = self.db.get_calendar_event(event_id)
+        if not event:
+            # Fallback to generic start if event not found.
+            # _start_recording will perform its own safety checks.
+            self._start_recording()
+            return
+
+        if not self._check_disk_space():
+            return
+
+        mic_id = self.mic_combo.currentData()
+        # Check for Bluetooth A2DP
+        for device in self.devices:
+            if device.id == mic_id and device.is_bluetooth:
+                profile = getattr(device, "bluetooth_profile", None)
+                if profile and "a2dp" in profile.lower():
+                    reply = QMessageBox.warning(
+                        self,
+                        "Bluetooth Warning",
+                        f"'{device.name}' is in A2DP mode. Mic may not work.\nContinue?",
+                        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+                        QMessageBox.StandardButton.No,
+                    )
+                    if reply == QMessageBox.StandardButton.No:
+                        return
+
+        title = event.get("title", "Meeting")
+        self._do_start_recording(event_id, title)
+
     def _start_recording(self):
         """Start a new recording session."""
         mic_id = self.mic_combo.currentData()
@@ -1561,6 +1595,13 @@ class MiddlePanel(QWidget):
         if result is None:
             return  # User cancelled
         linked_event_id, meeting_title = result
+        self._do_start_recording(linked_event_id, meeting_title)
+
+    def _do_start_recording(self, linked_event_id: str | None, meeting_title: str | None):
+        """Internal core logic to start recording."""
+        mic_id = self.mic_combo.currentData()
+        if not mic_id:
+            return
 
         try:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -1568,20 +1609,21 @@ class MiddlePanel(QWidget):
 
             base_dir = config.get("output_dir")
             if not base_dir:
-                QMessageBox.critical(self, "Error", "Output directory not set.")
+                if self.isVisible():
+                    QMessageBox.critical(self, "Error", "Output directory not set.")
                 return
 
             self.current_session_dir = os.path.join(base_dir, self.current_rec_id)
             os.makedirs(self.current_session_dir, exist_ok=True)
 
-            config_obj = quinoa_audio.RecordingConfig(
+            config_obj = quinoa_audio.RecordingConfig(  # type: ignore[attr-defined]
                 output_dir=self.current_session_dir,
                 mic_device_id=mic_id,
                 system_audio=self.sys_audio_check.isChecked(),
                 sample_rate=DEFAULT_SAMPLE_RATE,
             )
 
-            self.recording_session = quinoa_audio.start_recording(config_obj)
+            self.recording_session = quinoa_audio.start_recording(config_obj)  # type: ignore[attr-defined]
             self.recording_start_time = time.time()
             self.recording_paused_time = 0
             self.is_paused = False
@@ -1647,7 +1689,10 @@ class MiddlePanel(QWidget):
                 self.on_history_changed()
 
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to start recording: {str(e)}")
+            if self.isVisible():
+                QMessageBox.critical(self, "Error", f"Failed to start recording: {str(e)}")
+            else:
+                logger.error("Failed to start recording: %s", e)
 
     def _stop_recording(self):
         """Stop the current recording session."""

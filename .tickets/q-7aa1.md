@@ -1,6 +1,6 @@
 ---
 id: q-7aa1
-status: open
+status: closed
 deps: [quinoa-3dm]
 links: []
 created: 2026-02-28T14:16:22Z
