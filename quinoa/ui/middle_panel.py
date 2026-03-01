@@ -4,6 +4,7 @@ import contextlib
 import json
 import logging
 import os
+import re
 import shutil
 import time
 from collections.abc import Callable
@@ -72,10 +73,15 @@ from quinoa.ui.transcript_handler import (
     utterances_from_json,
     utterances_to_json,
 )
-from quinoa.ui.transcript_view import TranscriptView
+from quinoa.ui.transcript_view import SpeakerInputDialog, TranscriptView
 from quinoa.ui.trim_view import TrimView
 
 logger = logging.getLogger("quinoa")
+
+
+def _is_generic_speaker(name: str) -> bool:
+    """Check if a name is a generic Gemini speaker label (e.g. Speaker 2)."""
+    return bool(re.match(r"^Speaker \d+$", name))
 
 
 class MeetingSelectionDialog(QDialog):
@@ -258,6 +264,7 @@ class MiddlePanel(QWidget):
         self._cached_enhanced = ""
         self._cached_utterances: list[dict] = []
         self._cached_speaker_names: dict[str, str] = {}
+        self._speaker_suggestions: list[str] = []
 
         # Timers
         self.timer = QTimer()
@@ -285,6 +292,7 @@ class MiddlePanel(QWidget):
         self._setup_ui()
         self.refresh_devices()
         self._start_device_monitor()
+        self._refresh_speaker_suggestions()
 
     def _setup_ui(self):
         """Setup the panel UI."""
@@ -598,14 +606,23 @@ class MiddlePanel(QWidget):
         """Rename a speaker globally."""
         current_name = self._cached_speaker_names.get(speaker, speaker)
 
-        new_name, ok = QInputDialog.getText(
-            self,
+        suggestions = self._speaker_suggestions
+        new_name = None
+
+        dialog = SpeakerInputDialog(
             "Rename Speaker",
             f'Rename "{current_name}" to:',
-            text=current_name,
+            current_name,
+            suggestions,
+            self,
         )
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            new_name = dialog.get_new_name()
 
-        if ok and new_name and new_name != current_name:
+        if new_name and new_name != current_name:
+            if not _is_generic_speaker(new_name):
+                self.db.upsert_speaker_profile(new_name)
+                self._refresh_speaker_suggestions()
             self._cached_speaker_names[speaker] = new_name
             self._save_speaker_changes_and_refresh()
 
@@ -617,6 +634,11 @@ class MiddlePanel(QWidget):
             if s != exclude_speaker and s not in speakers:
                 speakers.append(s)
         return speakers
+
+    def _refresh_speaker_suggestions(self) -> None:
+        """Fetch and cache frequent speaker names, and update the view."""
+        self._speaker_suggestions = self.db.get_frequent_speakers()
+        self.diarized_transcript_view.set_speaker_suggestions(self._speaker_suggestions)
 
     def _speaker_has_modifications(self, speaker: str) -> bool:
         """Check if any utterances for this speaker have been modified from original."""
@@ -1721,6 +1743,21 @@ class MiddlePanel(QWidget):
     def _on_speaker_names_changed(self, speaker_names: dict[str, str]):
         """Handle speaker names being edited."""
         if self._viewing_rec_id:
+            suggestions_changed = False
+            for key, new_name in speaker_names.items():
+                old_name = self._cached_speaker_names.get(key)
+                if (
+                    new_name
+                    and new_name.lower() != "me"
+                    and new_name != old_name
+                    and not _is_generic_speaker(new_name)
+                ):
+                    self.db.upsert_speaker_profile(new_name)
+                    suggestions_changed = True
+
+            if suggestions_changed:
+                self._refresh_speaker_suggestions()
+
             self._cached_speaker_names = speaker_names
             self.db.save_speaker_names(self._viewing_rec_id, json.dumps(speaker_names))
             self._update_speaker_chips()  # Refresh header chips

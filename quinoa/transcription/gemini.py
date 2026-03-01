@@ -17,10 +17,16 @@ class ActionItem(BaseModel):
 
 
 class Utterance(BaseModel):
-    """A single speaker utterance in the transcript."""
+    """A single speaker utterance in the transcript.
+
+    Fields `start_time` and `end_time` use formats like "MM:SS" or "HH:MM:SS"
+    provided by Gemini's native audioTimestamp feature.
+    """
 
     speaker: str  # "Me", "Speaker 2", or detected name
     text: str
+    start_time: str | None = None
+    end_time: str | None = None
 
 
 class TranscriptionResponse(BaseModel):
@@ -38,8 +44,9 @@ Instructions:
 2. If the audio is stereo, the left channel is "Me" and right channel is other participants
 3. For other speakers, use names if mentioned in conversation, otherwise use "Speaker 2", "Speaker 3", etc.
 4. Break the transcript into utterances - each time a different person speaks, start a new utterance
-5. Provide a concise summary of the meeting (2-3 sentences)
-6. Extract any action items mentioned
+5. For each utterance, include the start_time and end_time timestamps (e.g., "MM:SS" or "HH:MM:SS")
+6. Provide a concise summary of the meeting (2-3 sentences)
+7. Extract any action items mentioned
 
 Keep utterances reasonably sized - split long monologues into paragraphs.
 """
@@ -100,6 +107,7 @@ class GeminiTranscriber:
                 response_mime_type="application/json",
                 response_schema=TranscriptionResponse,
                 max_output_tokens=65536,  # Allow long transcripts (default 8192 is too small)
+                audio_timestamp=True,
             ),
         )
 

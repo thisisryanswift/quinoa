@@ -52,12 +52,12 @@ CREATE TABLE speaker_profiles (
 ```
 
 ## Sub-tasks
-- [ ] Add 'Set as Me' to speaker chip context menu
-- [ ] Persist is_me flag to database
-- [ ] Enable audioTimestamp in Gemini transcription config
-- [ ] Update Utterance Pydantic model with timestamp field
-- [ ] Create speaker_profiles table
-- [ ] Implement speaker name suggestions from profiles
-- [ ] Link profiles to folders for series context
+- [x] Add 'Set as Me' to speaker chip context menu
+- [x] Persist is_me flag to database
+- [x] Enable audioTimestamp in Gemini transcription config
+- [x] Update Utterance Pydantic model with timestamp field
+- [x] Create speaker_profiles table
+- [x] Implement speaker name suggestions from profiles
+- [ ] Link profiles to folders for series context (Note: Scoped globally by usage frequency >= 3 per user request instead)
 
 

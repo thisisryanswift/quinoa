@@ -112,6 +112,14 @@ class Database:
             """)
 
             conn.execute("""
+                CREATE TABLE IF NOT EXISTS speaker_profiles (
+                    name TEXT PRIMARY KEY,
+                    usage_count INTEGER DEFAULT 1,
+                    last_used_at TIMESTAMP
+                )
+            """)
+
+            conn.execute("""
                 CREATE TABLE IF NOT EXISTS transcripts (
                     recording_id TEXT PRIMARY KEY,
                     text TEXT,
@@ -462,6 +470,33 @@ class Database:
             final_list.sort(key=lambda x: x["started_at"] or "", reverse=True)
 
             return final_list
+
+    def upsert_speaker_profile(self, name: str) -> None:
+        """Upsert a speaker profile, incrementing usage count."""
+        with self._conn() as conn:
+            conn.execute(
+                """
+                INSERT INTO speaker_profiles (name, usage_count, last_used_at)
+                VALUES (?, 1, ?)
+                ON CONFLICT(name) DO UPDATE SET
+                    usage_count = usage_count + 1,
+                    last_used_at = excluded.last_used_at
+                """,
+                (name, get_now()),
+            )
+
+    def get_frequent_speakers(self, min_usage: int = 3) -> list[str]:
+        """Get names of frequent speakers."""
+        with self._conn() as conn:
+            cursor = conn.execute(
+                """
+                SELECT name FROM speaker_profiles
+                WHERE usage_count >= ?
+                ORDER BY usage_count DESC, last_used_at DESC
+                """,
+                (min_usage,),
+            )
+            return [row[0] for row in cursor.fetchall()]
 
     def save_speaker_names(self, rec_id: str, speaker_names: str) -> None:
         """Save speaker name mappings as JSON."""

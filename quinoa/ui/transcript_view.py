@@ -3,8 +3,10 @@
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QAction, QMouseEvent
 from PyQt6.QtWidgets import (
+    QComboBox,
+    QDialog,
+    QDialogButtonBox,
     QFrame,
-    QInputDialog,
     QLabel,
     QMenu,
     QScrollArea,
@@ -13,6 +15,42 @@ from PyQt6.QtWidgets import (
 )
 
 from quinoa.ui.styles import SPEAKER_COLORS
+
+
+class SpeakerInputDialog(QDialog):
+    def __init__(
+        self,
+        title: str,
+        label_text: str,
+        current_name: str,
+        suggestions: list[str],
+        parent: QWidget | None = None,
+    ):
+        super().__init__(parent)
+        self.setWindowTitle(title)
+        layout = QVBoxLayout(self)
+
+        label = QLabel(label_text)
+        layout.addWidget(label)
+
+        self.combo = QComboBox()
+        self.combo.setEditable(True)
+        self.combo.setCurrentText(current_name)
+
+        for s in suggestions:
+            if s and s != current_name:
+                self.combo.addItem(s)
+        layout.addWidget(self.combo)
+
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        )
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    def get_new_name(self) -> str:
+        return self.combo.currentText().strip()
 
 
 class ClickableLabel(QLabel):
@@ -129,9 +167,14 @@ class TranscriptView(QScrollArea):
         self._utterances: list[dict] = []
         self._speaker_names: dict[str, str] = {}  # original -> display name
         self._speaker_colors: dict[str, str] = {}
+        self._speaker_suggestions: list[str] = []
         self._bubbles: list[UtteranceBubble] = []
 
         self._setup_ui()
+
+    def set_speaker_suggestions(self, suggestions: list[str]):
+        """Set autocomplete suggestions for renaming speakers."""
+        self._speaker_suggestions = suggestions
 
     def _setup_ui(self):
         self.setWidgetResizable(True)
@@ -299,14 +342,18 @@ class TranscriptView(QScrollArea):
         if not original:
             original = current_name
 
-        new_name, ok = QInputDialog.getText(
-            self,
+        new_name = None
+        dialog = SpeakerInputDialog(
             "Rename Speaker",
             f'Rename "{current_name}" to:',
-            text=current_name,
+            current_name,
+            self._speaker_suggestions,
+            self,
         )
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            new_name = dialog.get_new_name()
 
-        if ok and new_name and new_name != current_name:
+        if new_name and new_name != current_name:
             self._speaker_names[original] = new_name
 
             # Update all bubbles with this speaker
@@ -331,13 +378,18 @@ class TranscriptView(QScrollArea):
 
     def _reassign_to_new_speaker(self, index: int):
         """Create a new speaker and assign utterance to them."""
-        new_name, ok = QInputDialog.getText(
-            self,
+        new_name = None
+        dialog = SpeakerInputDialog(
             "New Speaker",
             "Enter new speaker name:",
+            "",
+            self._speaker_suggestions,
+            self,
         )
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            new_name = dialog.get_new_name()
 
-        if ok and new_name:
+        if new_name:
             # Assign a new color
             used_colors = set(self._speaker_colors.values())
             for color in SPEAKER_COLORS:
