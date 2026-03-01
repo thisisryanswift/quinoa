@@ -85,6 +85,7 @@ class CalendarPanel(QWidget):
     # Signals
     meeting_selected = pyqtSignal(str)  # event_id for calendar events
     recording_selected = pyqtSignal(str)  # recording_id for recordings
+    search_result_selected = pyqtSignal(str, str)  # rec_id, search_term
     meeting_renamed = pyqtSignal(str, str)  # rec_id, new_title
     impromptu_meeting_requested = pyqtSignal()
     new_meeting_requested = pyqtSignal()  # Alias for compatibility
@@ -657,7 +658,8 @@ class CalendarPanel(QWidget):
         """Handle click on search result."""
         rec_id = item.data(Qt.ItemDataRole.UserRole)
         if rec_id:
-            self.recording_selected.emit(rec_id)
+            search_term = self.search_bar.text().strip()
+            self.search_result_selected.emit(rec_id, search_term)
 
     def _filter_recursive(self, item: QTreeWidgetItem, text: str) -> bool:
         """Recursively filter tree items."""

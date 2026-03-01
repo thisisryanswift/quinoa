@@ -1,5 +1,7 @@
 """Chat-bubble style transcript viewer with speaker editing."""
 
+import re
+
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QAction, QMouseEvent
 from PyQt6.QtWidgets import (
@@ -7,6 +9,7 @@ from PyQt6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
     QFrame,
+    QHBoxLayout,
     QLabel,
     QMenu,
     QScrollArea,
@@ -15,6 +18,24 @@ from PyQt6.QtWidgets import (
 )
 
 from quinoa.ui.styles import SPEAKER_COLORS
+
+
+def parse_timestamp_to_ms(ts: str | None) -> int | None:
+    if not ts:
+        return None
+    # Remove any brackets or whitespace
+    ts = ts.strip("[] \t")
+    parts = ts.split(':')
+    try:
+        if len(parts) == 2:
+            m, s = parts
+            return (int(m) * 60 + int(float(s))) * 1000
+        elif len(parts) == 3:
+            h, m, s = parts
+            return (int(h) * 3600 + int(m) * 60 + int(float(s))) * 1000
+    except ValueError:
+        pass
+    return None
 
 
 class SpeakerInputDialog(QDialog):
@@ -68,6 +89,7 @@ class UtteranceBubble(QFrame):
     """A single chat bubble for an utterance."""
 
     speaker_clicked = pyqtSignal(str, int)  # speaker_name, utterance_index
+    timestamp_clicked = pyqtSignal(int)  # ms
 
     def __init__(
         self,
@@ -76,6 +98,8 @@ class UtteranceBubble(QFrame):
         index: int,
         is_me: bool = False,
         color: str = "#3498db",
+        start_time: str | None = None,
+        end_time: str | None = None,
         parent: QWidget | None = None,
     ):
         super().__init__(parent)
@@ -83,12 +107,37 @@ class UtteranceBubble(QFrame):
         self.index = index
         self.is_me = is_me
 
-        self._setup_ui(speaker, text, color)
+        self.start_time_ms = parse_timestamp_to_ms(start_time)
+        self.end_time_ms = parse_timestamp_to_ms(end_time)
 
-    def _setup_ui(self, speaker: str, text: str, color: str):
+        self._setup_ui(speaker, text, color, start_time)
+
+    def _setup_ui(self, speaker: str, text: str, color: str, start_time: str | None):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(8, 6, 8, 6)
         layout.setSpacing(4)
+
+        header_layout = QHBoxLayout()
+        header_layout.setContentsMargins(0, 0, 0, 0)
+        header_layout.setSpacing(8)
+
+        # Optional clickable timestamp
+        if start_time and self.start_time_ms is not None:
+            self.time_label = ClickableLabel(f"▶ {start_time}")
+            self.time_label.setStyleSheet(f"""
+                QLabel {{
+                    color: {color};
+                    font-weight: bold;
+                    font-size: 11px;
+                }}
+                QLabel:hover {{
+                    text-decoration: underline;
+                }}
+            """)
+            self.time_label.setCursor(Qt.CursorShape.PointingHandCursor)
+            ms = self.start_time_ms
+            self.time_label.clicked.connect(lambda _e, t=ms: self.timestamp_clicked.emit(t))
+            header_layout.addWidget(self.time_label)
 
         # Speaker label (clickable)
         self.speaker_label = ClickableLabel(f"▼ {speaker}")
@@ -106,7 +155,10 @@ class UtteranceBubble(QFrame):
         self.speaker_label.clicked.connect(
             lambda _e: self.speaker_clicked.emit(self.speaker, self.index)
         )
-        layout.addWidget(self.speaker_label)
+        header_layout.addWidget(self.speaker_label)
+        header_layout.addStretch()
+
+        layout.addLayout(header_layout)
 
         # Text content
         text_label = QLabel(text)
@@ -162,6 +214,8 @@ class TranscriptView(QScrollArea):
     set_as_me_requested = pyqtSignal(str)  # speaker to set as Me
     merge_speakers_requested = pyqtSignal(str, str)  # source, target
 
+    timestamp_clicked = pyqtSignal(int)  # ms
+
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
         self._utterances: list[dict] = []
@@ -169,6 +223,7 @@ class TranscriptView(QScrollArea):
         self._speaker_colors: dict[str, str] = {}
         self._speaker_suggestions: list[str] = []
         self._bubbles: list[UtteranceBubble] = []
+        self._active_bubble: UtteranceBubble | None = None
 
         self._setup_ui()
 
@@ -229,6 +284,7 @@ class TranscriptView(QScrollArea):
 
     def _rebuild_bubbles(self):
         """Rebuild all chat bubbles."""
+        self._active_bubble = None
         # Clear existing
         for bubble in self._bubbles:
             bubble.deleteLater()
@@ -247,6 +303,8 @@ class TranscriptView(QScrollArea):
             text = u.get("text", "")
             is_me = original_speaker.lower() == "me"
             color = self._speaker_colors.get(original_speaker, SPEAKER_COLORS[1])
+            start_time = u.get("start_time")
+            end_time = u.get("end_time")
 
             bubble = UtteranceBubble(
                 speaker=display_speaker,
@@ -254,8 +312,11 @@ class TranscriptView(QScrollArea):
                 index=i,
                 is_me=is_me,
                 color=color,
+                start_time=start_time,
+                end_time=end_time,
             )
             bubble.speaker_clicked.connect(self._on_speaker_clicked)
+            bubble.timestamp_clicked.connect(self.timestamp_clicked.emit)
             self._bubbles.append(bubble)
             self.container_layout.addWidget(bubble)
 
@@ -405,6 +466,7 @@ class TranscriptView(QScrollArea):
 
     def clear(self):
         """Clear the transcript view."""
+        self._active_bubble = None
         self._utterances = []
         self._speaker_names = {}
         self._speaker_colors = {}
@@ -417,5 +479,105 @@ class TranscriptView(QScrollArea):
         return self._utterances
 
     def get_speaker_names(self) -> dict[str, str]:
-        """Get current speaker name mappings."""
+        """Get speaker name mapping."""
         return self._speaker_names
+
+    def _apply_bubble_style(self, bubble: UtteranceBubble, active: bool = False):
+        """Apply styling to a bubble, optionally as active."""
+        original_speaker = self._utterances[bubble.index].get("speaker", "Unknown")
+        color = self._speaker_colors.get(original_speaker, SPEAKER_COLORS[1])
+        align = "left" if bubble.is_me else "right"
+        border_side = "left" if bubble.is_me else "right"
+
+        if active:
+            bg_color = "#3a3a3a"  # Lighter background for active
+            border_width = "4px"
+        else:
+            bg_color = "#2d2d2d"
+            border_width = "3px"
+
+        bubble.setStyleSheet(f"""
+            UtteranceBubble {{
+                background-color: {bg_color};
+                border-{border_side}: {border_width} solid {color};
+                border-radius: 8px;
+                margin-{align}: 20px;
+                margin-top: 4px;
+                margin-bottom: 4px;
+            }}
+        """)
+
+    def highlight_utterance_at_time(self, ms: int):
+        """Highlight the utterance that contains the given time."""
+        active_bubble = None
+        for bubble in self._bubbles:
+            # Find utterance matching playback time (assumes sequential)
+            if bubble.start_time_ms is not None and ms >= bubble.start_time_ms and (bubble.end_time_ms is None or ms < bubble.end_time_ms):
+                active_bubble = bubble
+                break
+
+        if active_bubble == self._active_bubble:
+            return
+
+        # Deactivate old bubble
+        if self._active_bubble is not None:
+            self._apply_bubble_style(self._active_bubble, active=False)
+
+        # Activate new bubble
+        if active_bubble is not None:
+            self._apply_bubble_style(active_bubble, active=True)
+            self.ensureWidgetVisible(active_bubble, 0, 50)
+
+        self._active_bubble = active_bubble
+
+    def _clear_highlights(self):
+        """Clear all search highlights."""
+        for bubble in self._bubbles:
+            text = self._utterances[bubble.index].get("text", "")
+            layout = bubble.layout()
+            if layout is not None:
+                for i in range(layout.count()):
+                    item = layout.itemAt(i)
+                    if item:
+                        widget = item.widget()
+                        if isinstance(widget, QLabel) and not isinstance(widget, ClickableLabel):
+                            widget.setTextFormat(Qt.TextFormat.PlainText)
+                            widget.setText(text)
+                            break
+
+    def highlight_search_term(self, term: str):
+        """Highlight search term and scroll to first match."""
+        if not term:
+            return
+
+        self._clear_highlights()
+        term_lower = term.lower()
+        first_match = None
+
+        for bubble in self._bubbles:
+            text = self._utterances[bubble.index].get("text", "")
+            if term_lower in text.lower():
+                if not first_match:
+                    first_match = bubble
+
+                highlighted_text = re.sub(
+                    f"({re.escape(term)})",
+                    r'<span style="background-color: #555500; color: #fff;">\1</span>',
+                    text,
+                    flags=re.IGNORECASE
+                )
+
+                # Find the QLabel inside the bubble
+                layout = bubble.layout()
+                if layout is not None:
+                    for i in range(layout.count()):
+                        item = layout.itemAt(i)
+                        if item:
+                            widget = item.widget()
+                            if isinstance(widget, QLabel) and not isinstance(widget, ClickableLabel):
+                                widget.setTextFormat(Qt.TextFormat.RichText)
+                                widget.setText(highlighted_text)
+                                break
+
+        if first_match:
+            self.ensureWidgetVisible(first_match, 0, 50)

@@ -65,13 +65,13 @@ Full-text search across transcripts with integrated audio playback.
 ```
 
 ## Sub-tasks
-- [ ] Add audio player widget to transcript view
-- [ ] Implement playback controls (play/pause, seek, speed)
-- [ ] Store/retrieve utterance timestamps
-- [ ] Implement click-utterance-to-seek
-- [ ] Add search box UI
-- [ ] Implement SQLite FTS5 for transcript search
-- [ ] Search results view with snippets
-- [ ] Search result → jump to meeting/timestamp
+- [x] Add audio player widget to transcript view
+- [x] Implement playback controls (play/pause, seek, speed)
+- [x] Store/retrieve utterance timestamps
+- [x] Implement click-utterance-to-seek
+- [x] Add search box UI
+- [x] Implement SQLite FTS5 for transcript search
+- [x] Search results view with snippets
+- [x] Search result → jump to meeting/timestamp
 
 

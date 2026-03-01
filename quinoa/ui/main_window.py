@@ -4,7 +4,7 @@ import logging
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QKeySequence, QShortcut
 from PyQt6.QtWidgets import QMainWindow, QMessageBox, QSplitter
 
@@ -75,6 +75,7 @@ class MainWindow(QMainWindow):
         self.left_panel.setMinimumWidth(LEFT_PANEL_MIN_WIDTH)
         self.left_panel.meeting_selected.connect(self._on_calendar_meeting_selected)
         self.left_panel.recording_selected.connect(self._on_meeting_selected)
+        self.left_panel.search_result_selected.connect(self._on_search_result_selected)
         self.left_panel.new_meeting_requested.connect(self._on_new_meeting)
         self.left_panel.settings_requested.connect(self._open_settings)
         self.splitter.addWidget(self.left_panel)
@@ -435,6 +436,12 @@ class MainWindow(QMainWindow):
         """Handle recording selection from left panel."""
         self.middle_panel.load_meeting(rec_id)
         self._update_chat_context_for_recording(rec_id)
+
+    def _on_search_result_selected(self, rec_id: str, search_term: str):
+        """Handle search result selection from left panel."""
+        self._on_meeting_selected(rec_id)
+        # Use singleShot(0) to wait until the next event loop iteration (after rendering)
+        QTimer.singleShot(0, lambda: self.middle_panel.diarized_transcript_view.highlight_search_term(search_term))
 
     def _on_calendar_meeting_selected(self, event_id: str):
         """Handle calendar event selection (unrecorded meeting)."""

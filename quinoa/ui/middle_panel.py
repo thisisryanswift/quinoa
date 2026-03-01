@@ -334,6 +334,9 @@ class MiddlePanel(QWidget):
         self.diarized_transcript_view.speaker_names_changed.connect(self._on_speaker_names_changed)
         self.diarized_transcript_view.set_as_me_requested.connect(self._set_speaker_as_me)
         self.diarized_transcript_view.merge_speakers_requested.connect(self._merge_speakers)
+        self.diarized_transcript_view.timestamp_clicked.connect(self._on_timestamp_clicked)
+        self.audio_player.player.positionChanged.connect(self.diarized_transcript_view.highlight_utterance_at_time)
+
         self.content_stack.addWidget(self.diarized_transcript_view)
 
         # Page 3: Empty state (shown when no meeting is selected)
@@ -1731,6 +1734,13 @@ class MiddlePanel(QWidget):
             elif self._viewing_event_id:
                 self.db.save_calendar_event_notes(self._viewing_event_id, notes)
                 logger.debug("Notes saved for event %s", self._viewing_event_id)
+
+    def _on_timestamp_clicked(self, ms: int) -> None:
+        """Handle click on a transcript timestamp to seek audio."""
+        if self.audio_player.isVisible():
+            # Stop seeking/playing briefly to set position reliably
+            self.audio_player.player.setPosition(ms)
+            self.audio_player.play()
 
     def _on_utterances_changed(self, utterances: list[dict]):
         """Handle utterances being edited (speaker reassignment)."""

@@ -1,6 +1,6 @@
 ---
 id: quinoa-yk5
-status: open
+status: closed
 deps: []
 links: []
 created: 2025-12-09T15:41:01.242573792-05:00
