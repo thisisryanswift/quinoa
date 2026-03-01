@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=Quinoa
+Comment=Meeting Recording and Transcription
+Exec=/home/rswift/.local/bin/quinoa
+Icon=quinoa
+Terminal=false
+Type=Application
+Categories=Utility;AudioVideo;Audio;
+Keywords=Meeting;Record;Transcribe;Gemini;
+StartupWMClass=quinoa

@@ -47,6 +47,9 @@ FILE_SEARCH_POLL_INTERVAL_MS = 60 * 1000  # Check every minute
 MIN_SYNC_DURATION_SECONDS = 30  # Skip recordings shorter than 30s
 CHAT_MAX_HISTORY = 50  # Max messages to retrieve
 
+# Application Icon
+APP_ICON_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "quinoa_icon.png")
+
 
 class PanelMode(IntEnum):
     """Mode for the middle panel."""

@@ -2,6 +2,24 @@
 
 ## Recently Completed
 
+### Session: 2026-03-01
+
+**Speaker Intelligence (Epic):**
+- **Persistent Speaker Profiles**: Automatically tracks frequent contacts (>= 3 meetings) globally.
+- **Smart Suggestions**: Editable dropdown for speaker renaming with frequency-based autocomplete.
+- **"Set as Me" / Channel Flip**: Instantly correct speaker misattribution via context menu; bubbles flip sides and update styles.
+- **Native Sync**: Enabled Gemini `audio_timestamp` for reliable millisecond-accurate utterance timing.
+
+**Search, Discovery & Playback (Epic):**
+- **Click-to-Jump**: Each chat bubble has a clickable `▶ MM:SS` timestamp that seeks the audio player.
+- **Playback Sync**: Karaoke-style highlighting; the active bubble styles itself and auto-scrolls as audio plays.
+- **Search Navigation**: Clicking a snippet in the history search bar now jumps directly to that meeting, highlights the matching text, and scrolls to the utterance.
+
+**Linux Desktop Integration:**
+- **Rich D-Bus Notifications**: Upgraded from Qt toasts to native KDE/GNOME notifications using `jeepney`.
+- **Interactive Actions**: "Start Recording" button directly in the notification starts recording immediately.
+- **Headless Safety**: One-click recording still performs disk space and Bluetooth A2DP safety checks before starting.
+
 ### Session: 2026-02-28
 
 **Daily Driver Features:**
@@ -95,34 +113,12 @@
 
 ### High Priority
 
-#### Trim Recording UI
-Users sometimes forget to stop recordings. Currently requires manual ffmpeg trimming.
-
-**Proposed solution:**
-- Waveform visualization in recording view
-- Drag handles to select trim points
-- Silence detection to suggest cut points
-- "Trim" button to truncate audio files and update duration
+#### Trim Feature Polish & Testing
+The Trim UI and logic are implemented but have zero test coverage.
+- [ ] Add unit tests for `trimmer.py` logic (silence detection, region merging).
+- [ ] Add tests for `waveform_widget.py` (cut management and UI logic).
 
 ### Medium Priority
-
-#### Speaker Intelligence (Epic)
-Improve speaker identification, attribution, and persistence across meetings.
-
-- **Persistent Speaker Profiles**: Remember speaker name mappings across meetings in the same folder/series. Suggest names from previous meetings.
-- **Utterance Timestamps**: Enable Gemini's audioTimestamp config for playback sync (required for Search & Playback click-to-jump).
-- **Database**: Speaker profiles table linked to folders.
-
-Blocks: Search, Discovery & Playback.
-
-#### Search, Discovery & Playback (Epic)
-Full-text search across transcripts with integrated audio playback and click-to-jump.
-
-- **Transcript Search**: Search box with full-text search across all transcripts, filtered by date/folder/attendees.
-- **Audio Playback**: Inline player with speed controls and seeking.
-- **Click-to-Jump**: Click utterance to jump audio to that timestamp, highlight currently playing utterance, auto-scroll.
-
-Depends on: Speaker Intelligence (for utterance timestamps).
 
 #### RAG Agent Enhancements - Series Context & Memory (Epic)
 Leverage meeting folders for better AI context and memory.
@@ -134,8 +130,11 @@ Leverage meeting folders for better AI context and memory.
 
 ### Low Priority
 
-#### D-Bus Rich Notification Actions
-Upgrade from QSystemTrayIcon to D-Bus notifications for action buttons (e.g., "Start Recording" directly from the notification). Linux-only enhancement.
+#### Multi-User / Enterprise Support
+Future consideration for teams.
+- Shared folders
+- Collaborative notes
+- Teams integration
 
 ---
 
@@ -177,6 +176,11 @@ Ideas captured for future consideration. Not currently scoped or prioritized.
 ---
 
 ## Completed Milestones
+
+### V9 - Intelligence & Interaction (Mar 2026)
+- Speaker Intelligence: Persistent profiles and smart suggestions
+- Sync & Playback: Click-to-jump timestamps and active highlighting
+- Linux Integration: Rich D-Bus notifications with interactive buttons
 
 ### V8 - Organization & Polish (Dec 2025 - Feb 2026)
 - Meeting folders with smart suggestions for recurring meetings

@@ -2,11 +2,38 @@ import argparse
 import signal
 import sys
 
-from PyQt6.QtCore import QTimer
+from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtGui import QIcon, QPainter, QPixmap
 from PyQt6.QtWidgets import QApplication
 
+from quinoa.constants import APP_ICON_PATH
 from quinoa.logging import logger, setup_logging
 from quinoa.ui.main_window import MainWindow
+
+
+def load_app_icon() -> QIcon:
+    """Load the application icon and ensure it's square to prevent smushing."""
+    pixmap = QPixmap(APP_ICON_PATH)
+    if pixmap.isNull():
+        return QIcon()
+
+    w, h = pixmap.width(), pixmap.height()
+    if w == h:
+        return QIcon(pixmap)
+
+    # Create a square transparent canvas
+    size = max(w, h)
+    squared = QPixmap(size, size)
+    squared.fill(Qt.GlobalColor.transparent)
+
+    # Center the original icon on the square canvas
+    painter = QPainter(squared)
+    x = (size - w) // 2
+    y = (size - h) // 2
+    painter.drawPixmap(x, y, pixmap)
+    painter.end()
+
+    return QIcon(squared)
 
 
 def main():
@@ -20,6 +47,7 @@ def main():
     setup_logging(verbose=args.verbose)
 
     app = QApplication(sys.argv)
+    app.setWindowIcon(load_app_icon())
 
     # Allow Ctrl+C to work in terminal during development
     # TODO: Remove this before release - it bypasses graceful shutdown
