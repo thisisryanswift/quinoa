@@ -20,6 +20,7 @@ from PyQt6.QtWidgets import (
     QStackedWidget,
     QTreeWidget,
     QTreeWidgetItem,
+    QTreeWidgetItemIterator,
     QVBoxLayout,
     QWidget,
 )
@@ -1264,28 +1265,70 @@ class CalendarPanel(QWidget):
         self.impromptu_meeting_requested.emit()
         self.new_meeting_requested.emit()  # For compatibility
 
-    def select_meeting(self, rec_id: str):
-        """Programmatically select a recording by ID."""
+    def select_meeting(self, rec_id: str) -> bool:
+        """Programmatically select a recording by ID.
+
+        Searches Today list and History tree. Switches view if found.
+        Returns True if found and selected, False otherwise.
+        """
+        # 1. Search Today list
         for i in range(self.meeting_list.count()):
             item = self.meeting_list.item(i)
             if not item:
                 continue
             item_type = item.data(Qt.ItemDataRole.UserRole + 1)
 
+            # Check for direct recording or calendar event linked to this recording
+            found = False
             if item_type == ITEM_TYPE_RECORDING:
                 if item.data(Qt.ItemDataRole.UserRole) == rec_id:
-                    self.meeting_list.setCurrentItem(item)
-                    self._selected_id = rec_id
-                    self._selected_type = ITEM_TYPE_RECORDING
-                    break
+                    found = True
             elif (
                 item_type == ITEM_TYPE_CALENDAR_EVENT
                 and item.data(Qt.ItemDataRole.UserRole + 2) == rec_id
             ):
+                found = True
+
+            if found:
+                self._switch_view(0)
                 self.meeting_list.setCurrentItem(item)
-                self._selected_id = item.data(Qt.ItemDataRole.UserRole)
-                self._selected_type = ITEM_TYPE_CALENDAR_EVENT
-                break
+                self._on_item_clicked(item)  # Triggers signals
+                return True
+
+        # 2. Search History tree (FolderTree)
+        # Tree items use a prefixed format in UserRole: "rec:{id}" or "event:{id}"
+        it = QTreeWidgetItemIterator(self.folder_tree)
+        while it.value():
+            item = it.value()
+            if not item:
+                it += 1
+                continue
+
+            data = item.data(0, Qt.ItemDataRole.UserRole)
+            if not data or not isinstance(data, str):
+                it += 1
+                continue
+
+            found = False
+            if data.startswith("rec:") and data.split(":", 1)[1] == rec_id:
+                found = True
+
+            if found:
+                self._switch_view(1)
+                # Ensure parents are expanded
+                parent = item.parent()
+                while parent:
+                    parent.setExpanded(True)
+                    parent = parent.parent()
+
+                self.folder_tree.setCurrentItem(item)
+                self._on_tree_item_clicked(item, 0)  # Triggers signals
+                self.folder_tree.scrollToItem(item)
+                return True
+            it += 1
+
+        logger.warning("Failed to find meeting %s for selection", rec_id)
+        return False
 
     def clear_selection(self):
         """Clear the current selection."""

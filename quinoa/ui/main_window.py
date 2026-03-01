@@ -2,10 +2,11 @@
 
 import logging
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QKeySequence, QShortcut
-from PyQt6.QtWidgets import QMainWindow, QSplitter
+from PyQt6.QtWidgets import QMainWindow, QMessageBox, QSplitter
 
 from quinoa.audio.compression_worker import CompressionWorker
 from quinoa.calendar import is_authenticated as calendar_is_authenticated
@@ -30,6 +31,9 @@ from quinoa.ui.middle_panel import MiddlePanel
 from quinoa.ui.right_panel import RightPanel
 from quinoa.ui.settings_dialog import SettingsDialog
 from quinoa.ui.tray_icon import TrayIconManager
+
+if TYPE_CHECKING:
+    from quinoa.ui.right_panel import MeetingContext
 
 logger = logging.getLogger("quinoa")
 
@@ -89,7 +93,7 @@ class MainWindow(QMainWindow):
 
         # Right panel - AI Chat
         self.right_panel = RightPanel(db=self.db)
-        self.right_panel.citation_clicked.connect(self.left_panel.select_meeting)
+        self.right_panel.citation_clicked.connect(self._on_citation_clicked)
         self.splitter.addWidget(self.right_panel)
 
         # Restore splitter sizes from config or use defaults
@@ -438,10 +442,60 @@ class MainWindow(QMainWindow):
         self.middle_panel.load_calendar_event(event_id)
         self._update_chat_context_for_event(event_id)
 
+    def _on_citation_clicked(self, rec_id: str) -> None:
+        """Handle citation click in AI chat."""
+        if not self.left_panel.select_meeting(rec_id):
+            QMessageBox.information(
+                self,
+                "Meeting Not Found",
+                "This meeting is no longer available or couldn't be located.",
+            )
+
     def _on_new_meeting(self):
         """Handle new meeting request - return to idle/recording mode."""
         self.middle_panel.clear_view()
         self.right_panel.set_viewing_context(None)
+
+    def _get_series_context(
+        self, folder_id: str, exclude_rec_id: str | None, ctx: "MeetingContext"
+    ) -> None:
+        """Helper to populate folder/series context for a meeting."""
+        folder = self.db.get_folder(folder_id)
+        if not folder:
+            return
+
+        ctx.folder_name = folder.get("name")
+
+        # Get recent meetings in the same folder for series context
+        recent = self.db.get_recordings_in_folder(folder_id, limit=5)
+        for r in recent:
+            if exclude_rec_id and r["id"] == exclude_rec_id:
+                continue
+
+            title = r.get("title", "Untitled")
+            date_raw = r.get("started_at", "")
+            date_display = date_raw
+            if date_raw:
+                try:
+                    dt = datetime.fromisoformat(date_raw) if isinstance(date_raw, str) else date_raw
+                    date_display = dt.strftime("%b %d, %Y")
+                except (ValueError, TypeError):
+                    pass
+
+            ctx.recent_meetings.append(f"{title} ({date_display})")
+
+            # Add summary for the most recent 2 meetings in the series
+            if len(ctx.summaries) < 2:
+                transcript = self.db.get_transcript(r["id"])
+                if transcript and transcript.get("summary"):
+                    ctx.summaries.append(
+                        {
+                            "id": r["id"],
+                            "title": title,
+                            "date": date_display,
+                            "summary": transcript["summary"],
+                        }
+                    )
 
     def _update_chat_context_for_recording(self, rec_id: str) -> None:
         """Build and set meeting context for the AI chat panel."""
@@ -457,41 +511,10 @@ class MainWindow(QMainWindow):
             date=rec.get("started_at"),
         )
 
-        # Resolve folder name
+        # Resolve folder/series context
         folder_id = rec.get("folder_id")
         if folder_id:
-            folder = self.db.get_folder(folder_id)
-            if folder:
-                ctx.folder_name = folder.get("name")
-
-                # Get recent meetings in the same folder for series context
-                recent = self.db.get_recordings_in_folder(folder_id, limit=5)
-                for r in recent:
-                    if r["id"] == rec_id:
-                        continue
-
-                    title = r.get("title", "Untitled")
-                    date_raw = r.get("started_at", "")
-                    date_display = date_raw
-                    if date_raw:
-                        try:
-                            dt = datetime.fromisoformat(date_raw) if isinstance(date_raw, str) else date_raw
-                            date_display = dt.strftime("%b %d, %Y")
-                        except (ValueError, TypeError):
-                            pass
-
-                    ctx.recent_meetings.append(f"{title} ({date_display})")
-
-                    # Add summary for the most recent 2 meetings in the series
-                    if len(ctx.summaries) < 2:
-                        transcript = self.db.get_transcript(r["id"])
-                        if transcript and transcript.get("summary"):
-                            ctx.summaries.append({
-                                "id": r["id"],
-                                "title": title,
-                                "date": date_display,
-                                "summary": transcript["summary"]
-                            })
+            self._get_series_context(folder_id, rec_id, ctx)
 
         # Resolve attendees from linked calendar event
         event = self.db.get_event_for_recording(rec_id)
@@ -520,34 +543,10 @@ class MainWindow(QMainWindow):
             date=event.get("start_time"),
         )
 
-        # Resolve folder
+        # Resolve folder/series context
         folder_id = event.get("folder_id")
         if folder_id:
-            folder = self.db.get_folder(folder_id)
-            if folder:
-                ctx.folder_name = folder.get("name")
-
-                # Get recent meetings in the same folder for series context
-                recent = self.db.get_recordings_in_folder(folder_id, limit=2)
-                for r in recent:
-                    transcript = self.db.get_transcript(r["id"])
-                    if transcript and transcript.get("summary"):
-                        title = r.get("title", "Untitled")
-                        date_raw = r.get("started_at", "")
-                        date_display = date_raw
-                        if date_raw:
-                            try:
-                                dt = datetime.fromisoformat(date_raw) if isinstance(date_raw, str) else date_raw
-                                date_display = dt.strftime("%b %d, %Y")
-                            except (ValueError, TypeError):
-                                pass
-
-                        ctx.summaries.append({
-                            "id": r["id"],
-                            "title": title,
-                            "date": date_display,
-                            "summary": transcript["summary"]
-                        })
+            self._get_series_context(folder_id, None, ctx)
 
         # Attendees
         if event.get("attendees"):

@@ -339,7 +339,7 @@ class FileSearchManager:
             names = ", ".join(meeting_context.attendees)
             context_parts.append(f"Attendees: {names}.")
 
-        if hasattr(meeting_context, "summaries") and meeting_context.summaries:
+        if meeting_context.summaries:
             context_parts.append("### Memory from previous meetings in this series:")
             for s in meeting_context.summaries:
                 context_parts.append(f"- {s['title']} ({s['date']}): {s['summary']}")

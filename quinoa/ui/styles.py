@@ -122,3 +122,43 @@ SPEAKER_COLORS = [
     "#f39c12",  # Yellow
     "#34495e",  # Dark gray
 ]
+
+# Chat bubbles and citations
+CHAT_BUBBLE_USER = """
+    ChatMessageWidget {
+        background-color: #3498db;
+        border-radius: 10px;
+        margin-left: 40px;
+        margin-right: 5px;
+    }
+    QLabel {
+        color: white;
+    }
+"""
+
+CHAT_BUBBLE_ASSISTANT = """
+    ChatMessageWidget {
+        background-color: #404040;
+        border-radius: 10px;
+        margin-left: 5px;
+        margin-right: 40px;
+    }
+    QLabel {
+        color: #eee;
+    }
+"""
+
+CITATION_BUTTON = """
+    QPushButton {
+        background-color: #555;
+        color: #ddd;
+        border: none;
+        border-radius: 4px;
+        padding: 2px 6px;
+        font-size: 10px;
+    }
+    QPushButton:hover {
+        background-color: #666;
+        color: #fff;
+    }
+"""

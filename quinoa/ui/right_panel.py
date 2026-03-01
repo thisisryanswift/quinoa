@@ -3,6 +3,7 @@
 import contextlib
 import json
 import logging
+import re
 import uuid
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
@@ -21,6 +22,7 @@ from PyQt6.QtWidgets import (
 
 from quinoa.constants import CHAT_MAX_HISTORY, LAYOUT_MARGIN_SMALL
 from quinoa.ui.markdown_converter import markdown_to_html
+from quinoa.ui.styles import CHAT_BUBBLE_ASSISTANT, CHAT_BUBBLE_USER, CITATION_BUTTON
 
 if TYPE_CHECKING:
     from quinoa.search.chat_worker import ChatWorker
@@ -39,7 +41,9 @@ class MeetingContext:
     folder_name: str | None = None
     attendees: list[str] = field(default_factory=list)
     recent_meetings: list[str] = field(default_factory=list)  # titles with dates
-    summaries: list[dict[str, str]] = field(default_factory=list)  # [{'title': ..., 'summary': ..., 'id': ...}]
+    summaries: list[dict[str, str]] = field(
+        default_factory=list
+    )  # [{'title': ..., 'summary': ..., 'id': ...}]
 
 
 class ChatMessageWidget(QFrame):
@@ -88,9 +92,14 @@ class ChatMessageWidget(QFrame):
                 # Gemini File Search URI usually looks like:
                 # 'fileSearchStores/xxx/documents/meeting_rec_yyy.md'
                 uri = citation.get("uri") or ""
+
+                # Robust extraction using regex: look for 'meeting_' followed by
+                # any chars up to '.md' or end of string.
+                # Recording IDs can be 'rec_YYYYMMDD_HHMMSS' or UUIDs.
                 rec_id = None
-                if "meeting_" in uri:
-                    rec_id = uri.split("meeting_")[-1].replace(".md", "")
+                match = re.search(r"meeting_([^.]+)(?:\.md|$)", uri)
+                if match:
+                    rec_id = match.group(1)
 
                 if rec_id and rec_id not in seen_ids:
                     seen_ids.add(rec_id)
@@ -101,20 +110,7 @@ class ChatMessageWidget(QFrame):
                     btn = QPushButton(display_title)
                     btn.setCursor(Qt.CursorShape.PointingHandCursor)
                     btn.setToolTip(f"Open {display_title}")
-                    btn.setStyleSheet("""
-                        QPushButton {
-                            background-color: #555;
-                            color: #ddd;
-                            border: none;
-                            border-radius: 4px;
-                            padding: 2px 6px;
-                            font-size: 10px;
-                        }
-                        QPushButton:hover {
-                            background-color: #666;
-                            color: #fff;
-                        }
-                    """)
+                    btn.setStyleSheet(CITATION_BUTTON)
                     btn.clicked.connect(lambda checked, rid=rec_id: self.citation_clicked.emit(rid))
                     citations_layout.addWidget(btn)
 
@@ -123,33 +119,9 @@ class ChatMessageWidget(QFrame):
 
         # Style based on role
         if role == "user":
-            self.setStyleSheet(
-                """
-                ChatMessageWidget {
-                    background-color: #3498db;
-                    border-radius: 10px;
-                    margin-left: 40px;
-                    margin-right: 5px;
-                }
-                QLabel {
-                    color: white;
-                }
-            """
-            )
+            self.setStyleSheet(CHAT_BUBBLE_USER)
         else:
-            self.setStyleSheet(
-                """
-                ChatMessageWidget {
-                    background-color: #404040;
-                    border-radius: 10px;
-                    margin-left: 5px;
-                    margin-right: 40px;
-                }
-                QLabel {
-                    color: #eee;
-                }
-            """
-            )
+            self.setStyleSheet(CHAT_BUBBLE_ASSISTANT)
 
 
 class RightPanel(QWidget):
