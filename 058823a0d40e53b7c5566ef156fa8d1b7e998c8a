@@ -1,0 +1,23 @@
+README.md
+  17e294cefdfa3917 113
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.7",
+  "base_commit_sha": "058823a0d40e53b7c5566ef156fa8d1b7e998c8a",
+  "prompts": {
+    "17e294cefdfa3917": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_350b182d2ffeWCeQVhS27TdJlq",
+        "model": "google/gemini-3-flash-preview"
+      },
+      "human_author": "Ryan Swift <ryan@mlh.io>",
+      "messages": [],
+      "total_additions": 1,
+      "total_deletions": 1,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    }
+  }
+}
