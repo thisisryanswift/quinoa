@@ -98,10 +98,10 @@ quinoa/
 
 ```bash
 # Fedora
-sudo dnf install pipewire-devel
+sudo dnf install pipewire-devel clang clang-devel
 
 # Ubuntu/Debian
-sudo apt install libpipewire-0.3-dev
+sudo apt install libpipewire-0.3-dev clang
 ```
 
 ### Building
@@ -110,7 +110,7 @@ sudo apt install libpipewire-0.3-dev
 # Create virtual environment and install dependencies
 uv venv
 source .venv/bin/activate
-uv pip install maturin PyQt6 google-genai keyring pydantic
+uv pip install -e .
 
 # Install dev dependencies (optional)
 uv pip install -e ".[dev]"  # Includes ruff, mypy, pytest
