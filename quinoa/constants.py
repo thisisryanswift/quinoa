@@ -30,7 +30,6 @@ LAYOUT_MARGIN_SMALL = 10
 
 # Audio
 DEFAULT_SAMPLE_RATE = 48000
-AUDIO_CHUNK_SIZE = 4096
 TIMER_INTERVAL_MS = 100
 SILENCE_THRESHOLD = 0.01  # VU level below which audio is considered silent
 SILENCE_NOTIFICATION_SECONDS = 90  # Notify after this many seconds of silence

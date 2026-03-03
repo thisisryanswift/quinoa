@@ -26,6 +26,7 @@ from quinoa.constants import (
 from quinoa.search.file_search import FileSearchManager
 from quinoa.search.sync_worker import SyncWorker
 from quinoa.storage.database import Database
+from quinoa.transcription.manager import TranscriptionManager
 from quinoa.ui.calendar_panel import CalendarPanel
 from quinoa.ui.middle_panel import MiddlePanel
 from quinoa.ui.right_panel import RightPanel
@@ -48,6 +49,10 @@ class MainWindow(QMainWindow):
 
         # Database
         self.db = Database()
+
+        # Transcription Manager
+        self.transcription_manager = TranscriptionManager(self.db, self)
+        self.transcription_manager.job_finished.connect(self._on_transcription_finished)
 
         # File Search components (initialized later if enabled)
         self._file_search: FileSearchManager | None = None
@@ -83,6 +88,7 @@ class MainWindow(QMainWindow):
         # Middle panel - Notes/Transcript + Recording controls
         self.middle_panel = MiddlePanel(
             db=self.db,
+            transcription_manager=self.transcription_manager,
             on_history_changed=self._on_history_changed,
         )
         self.middle_panel.recording_state_changed.connect(self._on_recording_state_changed)
@@ -242,8 +248,8 @@ class MainWindow(QMainWindow):
 
             # Connect transcription completion to sync queue
             delay_seconds = FILE_SEARCH_DELAY_MS // 1000
-            self.middle_panel.transcription_completed.connect(
-                lambda rec_id: (
+            self.transcription_manager.job_finished.connect(
+                lambda rec_id, _: (
                     self._sync_worker.queue_for_sync(rec_id, delay_seconds)
                     if self._sync_worker
                     else None
@@ -614,6 +620,12 @@ class MainWindow(QMainWindow):
         """Handle recording stopped."""
         self.left_panel.refresh()
 
+    def _on_transcription_finished(self, rec_id: str, json_str: str):
+        """Handle transcription completion."""
+        # Wake up compression worker to process the newly transcribed recording
+        if self._compression_worker:
+            self._compression_worker.wake()
+
     def _save_window_state(self):
         """Save window state (splitter sizes, collapsed states) to config."""
         # Save current splitter sizes (only if not collapsed)
@@ -646,6 +658,9 @@ class MainWindow(QMainWindow):
             if self._sync_worker:
                 self._sync_worker.stop()
                 self._sync_worker.wait(2000)  # Wait up to 2 seconds
+            # Stop transcription jobs
+            if self.transcription_manager:
+                self.transcription_manager.cancel_all()
             # Stop calendar sync worker
             self._stop_calendar_sync()
             # Stop notification worker

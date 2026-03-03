@@ -9,6 +9,10 @@ import shutil
 import time
 from collections.abc import Callable
 from datetime import datetime
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from quinoa.transcription.manager import TranscriptionManager
 
 from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 from PyQt6.QtGui import QAction, QClipboard
@@ -34,7 +38,6 @@ from PyQt6.QtWidgets import (
 )
 
 import quinoa_audio
-from quinoa.audio.converter import compress_recording_audio
 from quinoa.config import config
 from quinoa.constants import (
     DEFAULT_SAMPLE_RATE,
@@ -66,7 +69,6 @@ from quinoa.ui.styles import (
     SPEAKER_COLORS,
     STATUS_LABEL_PAUSED,
 )
-from quinoa.ui.transcribe_worker import TranscribeWorker
 from quinoa.ui.transcript_handler import (
     format_transcript_display,
     parse_transcription_result,
@@ -227,17 +229,18 @@ class MiddlePanel(QWidget):
     recording_started = pyqtSignal(str)  # recording_id
     recording_stopped = pyqtSignal(str)  # recording_id
     recording_state_changed = pyqtSignal(bool)  # is_recording
-    transcription_completed = pyqtSignal(str)  # recording_id
     silence_detected = pyqtSignal()  # extended silence during recording
 
     def __init__(
         self,
         db: Database,
+        transcription_manager: "TranscriptionManager | None" = None,
         parent: QWidget | None = None,
         on_history_changed: Callable[[], None] | None = None,
     ):
         super().__init__(parent)
         self.db = db
+        self.transcription_manager = transcription_manager
         self.on_history_changed = on_history_changed
 
         # Recording state
@@ -282,9 +285,11 @@ class MiddlePanel(QWidget):
         # Set during teardown to prevent stale callbacks from running
         self._shutting_down = False
 
-        # Transcription worker
-        self._worker: TranscribeWorker | None = None
-        self._transcribing_rec_id: str | None = None
+        # Transcription tracking
+        if self.transcription_manager:
+            self.transcription_manager.job_started.connect(self._on_transcription_job_started)
+            self.transcription_manager.job_finished.connect(self._on_transcription_job_finished)
+            self.transcription_manager.job_failed.connect(self._on_transcription_job_error)
 
         # Enhancement worker
         self._enhance_worker: EnhanceWorker | None = None
@@ -2020,12 +2025,7 @@ class MiddlePanel(QWidget):
         if self._shutting_down:
             return
 
-        if self._worker and self._worker.isRunning():
-            logger.debug("Transcription already in progress, skipping start")
-            return
-
-        if not config.get("api_key"):
-            QMessageBox.warning(self, "Missing API Key", "Set your Gemini API Key in Settings.")
+        if not self.transcription_manager:
             return
 
         # Determine which recording to transcribe
@@ -2046,18 +2046,30 @@ class MiddlePanel(QWidget):
             QMessageBox.warning(self, "Error", f"Directory not found: {session_dir}")
             return
 
-        self.transcribe_btn.setEnabled(False)
-        self.transcribe_btn.setText("Transcribing...")
-        self.status_label.setText("Transcribing...")
+        # Submit to manager
+        self.transcription_manager.submit(rec_id, session_dir)
 
-        self._transcribing_rec_id = rec_id
-        self._worker = TranscribeWorker(session_dir)
-        self._worker.finished.connect(self._on_transcription_finished)
-        self._worker.error.connect(self._on_transcription_error)
-        self._worker.start()
+    def _on_transcription_job_started(self, rec_id: str):
+        """Handle transcription job start signal."""
+        # Only update UI if we're viewing this recording or it's the current/just-finished one
+        if rec_id == self._viewing_rec_id or rec_id == self.current_rec_id:
+            self.transcribe_btn.setEnabled(False)
+            self.transcribe_btn.setText("Transcribing...")
+            self.status_label.setText("Transcribing...")
 
-    def _on_transcription_finished(self, json_str: str):
+    def _on_transcription_job_finished(self, rec_id: str, json_str: str):
         """Handle transcription completion."""
+        # Refresh left panel via signal
+        if self.on_history_changed:
+            self.on_history_changed()
+
+        # Only update content if we're viewing this recording or we're idle and it's the current one
+        is_viewing = rec_id == self._viewing_rec_id
+        is_just_finished = rec_id == self.current_rec_id and self._mode == PanelMode.IDLE
+
+        if not is_viewing and not is_just_finished:
+            return
+
         self.status_label.setText("Transcription Complete")
         self.transcribe_btn.setEnabled(True)
         self.transcribe_btn.setText("Re-transcribe")
@@ -2074,59 +2086,27 @@ class MiddlePanel(QWidget):
         # Update speaker chips in header
         self._update_speaker_chips()
 
-        # Display using diarized view if utterances available (regardless of mode)
+        # Display using diarized view if utterances available
         if utterances:
             self.diarized_transcript_view.set_utterances(utterances, {})
             self.content_stack.setCurrentIndex(2)  # Diarized view
         else:
             # Fallback to plain text viewer
-            if self._mode == PanelMode.VIEWING and self._transcribing_rec_id:
-                notes = self.db.get_notes(self._transcribing_rec_id)
-                if notes:
-                    display_text = f"## Notes\n{notes}\n\n{display_text}"
+            notes = self.db.get_notes(rec_id)
+            if notes:
+                display_text = f"## Notes\n{notes}\n\n{display_text}"
             self.transcript_viewer.set_markdown(display_text)
             self.content_stack.setCurrentIndex(1)
 
-        # Save to DB
-        if self._transcribing_rec_id:
-            utterances_json = utterances_to_json(utterances) if utterances else None
-            self.db.save_transcript(
-                self._transcribing_rec_id, result["transcript"], result["summary"], utterances_json
-            )
-            if not result["parse_error"]:
-                self.db.save_action_items(self._transcribing_rec_id, result["action_items"])
-            self.transcription_completed.emit(self._transcribing_rec_id)
-            if self.on_history_changed:
-                self.on_history_changed()
-
-            # Compress audio files after successful transcription (lazy compression)
-            self._compress_recording_audio(self._transcribing_rec_id)
-
-    def _on_transcription_error(self, error_msg: str):
+    def _on_transcription_job_error(self, rec_id: str, error_msg: str):
         """Handle transcription error."""
-        self.status_label.setText("Transcription Failed")
-        self.transcribe_btn.setEnabled(True)
-        self.transcribe_btn.setText("Transcribe")
-        QMessageBox.warning(self, "Transcription Error", error_msg)
-
-    def _compress_recording_audio(self, rec_id: str) -> None:
-        """Compress audio files for a recording after transcription.
-
-        This converts WAV files to FLAC for storage optimization.
-        Original WAV files are kept for now (lazy cleanup can be added later).
-        """
-        rec = self.db.get_recording(rec_id)
-        if not rec or not rec.get("directory_path"):
-            return
-
-        recording_dir = rec["directory_path"]
-        try:
-            results = compress_recording_audio(recording_dir, delete_originals=False)
-            if results:
-                compressed_count = sum(1 for v in results.values() if v is not None)
-                logger.info("Compressed %d audio files for recording %s", compressed_count, rec_id)
-        except Exception as e:
-            logger.warning("Failed to compress audio for %s: %s", rec_id, e)
+        if rec_id == self._viewing_rec_id or (
+            rec_id == self.current_rec_id and self._mode == PanelMode.IDLE
+        ):
+            self.status_label.setText("Transcription Failed")
+            self.transcribe_btn.setEnabled(True)
+            self.transcribe_btn.setText("Transcribe")
+            QMessageBox.warning(self, "Transcription Error", error_msg)
 
     def _start_enhancement(self):
         """Start AI enhancement of notes."""

@@ -5,10 +5,9 @@ Runs at low priority to avoid impacting UI performance.
 """
 
 import logging
-import time
 from pathlib import Path
 
-from PyQt6.QtCore import QThread, pyqtSignal
+from PyQt6.QtCore import QMutex, QThread, QWaitCondition, pyqtSignal
 
 from quinoa.audio.converter import compress_recording_audio, mix_recording_audio
 from quinoa.storage.database import Database
@@ -19,7 +18,7 @@ logger = logging.getLogger("quinoa")
 COMPRESSION_DELAY_S = 5
 
 # How long to wait before starting compression on app launch (seconds)
-STARTUP_DELAY_S = 30
+STARTUP_DELAY_S = 10
 
 
 class CompressionWorker(QThread):
@@ -42,6 +41,12 @@ class CompressionWorker(QThread):
         super().__init__(parent)
         self.db = db
         self._running = False
+        self._mutex = QMutex()
+        self._condition = QWaitCondition()
+
+    def wake(self):
+        """Wake up the worker to check for new tasks."""
+        self._condition.wakeAll()
 
     def run(self) -> None:
         """Main worker loop."""
@@ -49,10 +54,12 @@ class CompressionWorker(QThread):
 
         # Wait a bit after app launch before starting
         logger.info("Compression worker starting (waiting %ds)", STARTUP_DELAY_S)
-        for _ in range(STARTUP_DELAY_S):
-            if not self._running:
-                return
-            time.sleep(1)
+        self._mutex.lock()
+        self._condition.wait(self._mutex, STARTUP_DELAY_S * 1000)
+        self._mutex.unlock()
+
+        if not self._running:
+            return
 
         logger.info("Compression worker active")
 
@@ -62,20 +69,23 @@ class CompressionWorker(QThread):
                 if recording:
                     self._compress_recording(recording)
                 else:
-                    # No work to do, sleep longer
-                    for _ in range(60):  # Check every minute when idle
-                        if not self._running:
-                            return
-                        time.sleep(1)
+                    # No work to do, wait for a signal or timeout
+                    self._mutex.lock()
+                    # Wait for up to 60 seconds
+                    self._condition.wait(self._mutex, 60000)
+                    self._mutex.unlock()
             except Exception as e:
                 logger.error("Compression worker error: %s", e)
-                time.sleep(COMPRESSION_DELAY_S)
+                self._mutex.lock()
+                self._condition.wait(self._mutex, COMPRESSION_DELAY_S * 1000)
+                self._mutex.unlock()
 
         logger.info("Compression worker stopped")
 
     def stop(self) -> None:
         """Stop the worker gracefully."""
         self._running = False
+        self._condition.wakeAll()
 
     def _find_next_recording(self) -> dict | None:
         """Find a recording that needs compression.
@@ -83,11 +93,12 @@ class CompressionWorker(QThread):
         Returns the first transcribed recording that has WAV files
         but no corresponding FLAC files.
         """
-        # Get all transcribed recordings
+        # Get all recordings
         recordings = self.db.get_recordings()
 
         for rec in recordings:
             # Skip if not transcribed
+            # Note: We use 'transcribed' status which is set by TranscriptionManager
             if rec.get("status") != "transcribed":
                 continue
 
@@ -119,7 +130,7 @@ class CompressionWorker(QThread):
         self.compression_started.emit(rec_id)
 
         try:
-            # 1. Mix audio if needed
+            # 1. Mix audio if needed (using the new join filter via converter)
             mixed_path = mix_recording_audio(dir_path)
             if mixed_path:
                 logger.info("Mixed audio created: %s", mixed_path)
@@ -140,8 +151,7 @@ class CompressionWorker(QThread):
             logger.error("Failed to compress recording %s: %s", rec_id, e)
             self.compression_failed.emit(rec_id, str(e))
 
-        # Delay before next compression
-        for _ in range(COMPRESSION_DELAY_S):
-            if not self._running:
-                return
-            time.sleep(1)
+        # Delay before next compression job
+        self._mutex.lock()
+        self._condition.wait(self._mutex, COMPRESSION_DELAY_S * 1000)
+        self._mutex.unlock()

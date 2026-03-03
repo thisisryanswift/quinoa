@@ -11,6 +11,8 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from quinoa.audio.mixer import create_stereo_mix
+
 logger = logging.getLogger("quinoa")
 
 # Default compression format
@@ -159,32 +161,12 @@ def mix_recording_audio(recording_dir: str | Path) -> Path | None:
 
     try:
         if sys_path.exists():
-            # Mix both
-            # amix inputs=2:duration=longest
-            cmd = [
-                "ffmpeg",
-                "-y",
-                "-i",
-                str(mic_path),
-                "-i",
-                str(sys_path),
-                "-filter_complex",
-                "amix=inputs=2:duration=longest",
-                str(output_path),
-            ]
+            # Mix both into stereo (L=mic, R=sys) using ffmpeg join filter
+            logger.info("Mixing audio to %s", output_path.name)
+            create_stereo_mix(mic_path, sys_path, output_path)
         else:
             # Just copy mic
-            # We use ffmpeg to ensure consistent format if needed, or simple copy
-            # Simple copy is faster
             shutil.copy2(mic_path, output_path)
-            return output_path
-
-        logger.info("Mixing audio to %s", output_path.name)
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
-
-        if result.returncode != 0:
-            logger.error("ffmpeg mix failed: %s", result.stderr)
-            return None
 
         return output_path
 

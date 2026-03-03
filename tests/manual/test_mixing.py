@@ -1,7 +1,7 @@
 import os
 import wave
 
-from quinoa.transcription.processor import create_stereo_mix
+from quinoa.audio.mixer import create_stereo_mix
 
 
 def test_mixing():
