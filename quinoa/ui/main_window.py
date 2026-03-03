@@ -12,6 +12,7 @@ from quinoa.audio.compression_worker import CompressionWorker
 from quinoa.calendar import is_authenticated as calendar_is_authenticated
 from quinoa.calendar.notification_worker import NotificationWorker
 from quinoa.calendar.sync_worker import CalendarSyncWorker
+from quinoa.calendar.utils import parse_attendee_names
 from quinoa.config import config
 from quinoa.constants import (
     FILE_SEARCH_DELAY_MS,
@@ -95,6 +96,7 @@ class MainWindow(QMainWindow):
         self.middle_panel.recording_started.connect(self._on_recording_started)
         self.middle_panel.recording_stopped.connect(self._on_recording_stopped)
         self.middle_panel.silence_detected.connect(self._on_silence_detected)
+        self.middle_panel.metadata_changed.connect(self._on_meeting_metadata_changed)
         self.left_panel.meeting_renamed.connect(self.middle_panel.on_meeting_renamed)
         self.splitter.addWidget(self.middle_panel)
 
@@ -553,14 +555,8 @@ class MainWindow(QMainWindow):
 
         # Resolve attendees from linked calendar event
         event = self.db.get_event_for_recording(rec_id)
-        if event and event.get("attendees"):
-            import json
-
-            try:
-                attendee_list = json.loads(event["attendees"])
-                ctx.attendees = [a.get("name") or a.get("email", "Unknown") for a in attendee_list]
-            except (json.JSONDecodeError, TypeError):
-                pass
+        if event:
+            ctx.attendees = parse_attendee_names(event.get("attendees"))
 
         self.right_panel.set_viewing_context(ctx)
 
@@ -584,14 +580,7 @@ class MainWindow(QMainWindow):
             self._get_series_context(folder_id, None, ctx)
 
         # Attendees
-        if event.get("attendees"):
-            import json
-
-            try:
-                attendee_list = json.loads(event["attendees"])
-                ctx.attendees = [a.get("name") or a.get("email", "Unknown") for a in attendee_list]
-            except (json.JSONDecodeError, TypeError):
-                pass
+        ctx.attendees = parse_attendee_names(event.get("attendees"))
 
         self.right_panel.set_viewing_context(ctx)
 
@@ -619,6 +608,17 @@ class MainWindow(QMainWindow):
     def _on_recording_stopped(self, rec_id: str):
         """Handle recording stopped."""
         self.left_panel.refresh()
+
+    def _on_meeting_metadata_changed(self, rec_id: str):
+        """Handle meeting metadata changes (title, speakers)."""
+        # Trigger immediate sync (with short debounce delay)
+        if self._sync_worker:
+            self._sync_worker.queue_for_sync(rec_id, delay_seconds=10)
+
+        # Update chat context if this is the meeting being viewed
+        viewing_id = self.middle_panel._viewing_rec_id or self.middle_panel.current_rec_id
+        if rec_id == viewing_id:
+            self._update_chat_context_for_recording(rec_id)
 
     def _on_transcription_finished(self, rec_id: str, json_str: str):
         """Handle transcription completion."""

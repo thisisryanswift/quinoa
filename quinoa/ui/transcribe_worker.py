@@ -8,7 +8,7 @@ from PyQt6.QtCore import QMutex, QThread, pyqtSignal
 
 from quinoa.audio.mixer import MIX_FILTER_COMPLEX
 from quinoa.config import config
-from quinoa.transcription.gemini import GeminiTranscriber
+from quinoa.transcription.gemini import DEFAULT_TRANSCRIPTION_PROMPT, GeminiTranscriber
 
 logger = logging.getLogger("quinoa")
 
@@ -19,10 +19,18 @@ class TranscribeWorker(QThread):
     finished = pyqtSignal(str)
     error = pyqtSignal(str)
 
-    def __init__(self, output_dir: str, rec_id: str):
+    def __init__(
+        self,
+        output_dir: str,
+        rec_id: str,
+        title: str | None = None,
+        attendees: list[str] | None = None,
+    ):
         super().__init__()
         self.output_dir = output_dir
         self.rec_id = rec_id
+        self.title = title
+        self.attendees = attendees or []
         self._is_cancelled = False
         self._mutex = QMutex()
         self._process: subprocess.Popen | None = None
@@ -110,8 +118,27 @@ class TranscribeWorker(QThread):
             api_key = config.get("api_key")
             transcriber = GeminiTranscriber(api_key=api_key)
 
+            # Build customized prompt with meeting metadata hints
+            # Note: We perform basic sanitization on externally sourced metadata
+            # to prevent prompt injection, although risk is mitigated by structured output.
+            prompt = None
+            if self.title or self.attendees:
+                context_hints = []
+                if self.title:
+                    # Strip newlines and truncate to avoid massive injection
+                    safe_title = self.title.replace("\n", " ").strip()[:200]
+                    context_hints.append(f"Meeting Title: {safe_title}")
+                if self.attendees:
+                    # Sanitize and truncate attendee list
+                    safe_attendees = [a.replace("\n", " ").strip()[:100] for a in self.attendees]
+                    context_hints.append(f"Known Participants: {', '.join(safe_attendees[:50])}")
+
+                hint_text = "\n".join(context_hints)
+                prompt = f"Context for this meeting:\n{hint_text}\n\n{DEFAULT_TRANSCRIPTION_PROMPT}"
+                logger.debug("Using customized prompt with metadata hints for %s", self.rec_id)
+
             # The transcribe call is network bound and blocks.
-            transcript = transcriber.transcribe(upload_path)
+            transcript = transcriber.transcribe(upload_path, prompt=prompt)
 
             if self._is_cancelled:
                 return

@@ -229,6 +229,7 @@ class MiddlePanel(QWidget):
     recording_started = pyqtSignal(str)  # recording_id
     recording_stopped = pyqtSignal(str)  # recording_id
     recording_state_changed = pyqtSignal(bool)  # is_recording
+    metadata_changed = pyqtSignal(str)  # recording_id
     silence_detected = pyqtSignal()  # extended silence during recording
 
     def __init__(
@@ -1792,10 +1793,16 @@ class MiddlePanel(QWidget):
         """Save notes from the editor when in viewing mode."""
         if self._mode == PanelMode.VIEWING and self._current_view == ViewType.NOTES:
             notes = self.notes_editor.get_markdown()
+
+            # Only save and emit if content actually changed
+            if notes == self._cached_notes:
+                return
+
             self._cached_notes = notes  # Update cache
 
             if self._viewing_rec_id:
                 self.db.save_notes(self._viewing_rec_id, notes)
+                self.metadata_changed.emit(self._viewing_rec_id)
                 logger.debug("Notes saved for recording %s", self._viewing_rec_id)
             elif self._viewing_event_id:
                 self.db.save_calendar_event_notes(self._viewing_event_id, notes)
@@ -1837,6 +1844,7 @@ class MiddlePanel(QWidget):
             self._cached_speaker_names = speaker_names
             self.db.save_speaker_names(self._viewing_rec_id, json.dumps(speaker_names))
             self._update_speaker_chips()  # Refresh header chips
+            self.metadata_changed.emit(self._viewing_rec_id)
             logger.debug("Speaker names updated for %s", self._viewing_rec_id)
 
     def _rename_meeting_from_header(self):
@@ -1850,6 +1858,7 @@ class MiddlePanel(QWidget):
         if ok and new_title and new_title != current_title:
             self.db.update_recording_title(self._viewing_rec_id, new_title)
             self.header_title.setText(new_title)
+            self.metadata_changed.emit(self._viewing_rec_id)
             # Notify left panel to refresh
             if self.on_history_changed:
                 self.on_history_changed()
@@ -1858,6 +1867,7 @@ class MiddlePanel(QWidget):
         """Handle meeting rename from left panel."""
         if self._viewing_rec_id == rec_id:
             self.header_title.setText(new_title)
+            self.metadata_changed.emit(rec_id)
 
     def _get_notes_text(self) -> str:
         """Get markdown text from notes editor."""

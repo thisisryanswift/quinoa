@@ -41,7 +41,7 @@ MIN_DISK_SPACE_BYTES = 500 * 1024 * 1024  # 500 MB
 NOTES_AUTO_SAVE_INTERVAL_MS = 30000  # 30 seconds
 
 # File Search
-FILE_SEARCH_DELAY_MS = 5 * 60 * 1000  # 5 minutes before sync
+FILE_SEARCH_DELAY_MS = 60 * 1000  # 1 minute before sync
 FILE_SEARCH_POLL_INTERVAL_MS = 60 * 1000  # Check every minute
 MIN_SYNC_DURATION_SECONDS = 30  # Skip recordings shorter than 30s
 CHAT_MAX_HISTORY = 50  # Max messages to retrieve

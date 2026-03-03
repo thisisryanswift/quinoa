@@ -2,6 +2,7 @@ import logging
 
 from PyQt6.QtCore import QObject, pyqtSignal
 
+from quinoa.calendar.utils import parse_attendee_names
 from quinoa.config import config
 from quinoa.storage.database import Database
 from quinoa.ui.transcribe_worker import TranscribeWorker
@@ -40,9 +41,18 @@ class TranscriptionManager(QObject):
             self.job_failed.emit(rec_id, "Gemini API key not configured.")
             return
 
+        # Fetch metadata for prompt hinting
+        rec = self.db.get_recording(rec_id)
+        title = rec.get("title") if rec else None
+
+        attendees = []
+        event = self.db.get_event_for_recording(rec_id)
+        if event:
+            attendees = parse_attendee_names(event.get("attendees"))
+
         logger.info("Starting transcription job for %s", rec_id)
 
-        worker = TranscribeWorker(session_dir, rec_id)
+        worker = TranscribeWorker(session_dir, rec_id, title=title, attendees=attendees)
         worker.finished.connect(lambda result: self._on_worker_finished(rec_id, result))
         worker.error.connect(lambda error: self._on_worker_error(rec_id, error))
 
