@@ -1,0 +1,701 @@
+quinoa/audio/converter.py
+  abacc59bbab4780c 14
+  012acfe950466532 164-166
+quinoa/ui/main_window.py
+  cf6a901b05cfe6d2 53-56
+  c022e5008c704029 251-252
+  ec6b606f7770d656 623-628
+  7ca8785e8c801f5e 661-663
+  9bfe7a8259e8c84d 29
+  a67e89d9af86012b 91
+quinoa/audio/mixer.py
+  7e02f8577a38dfc9 44
+  b33e8b8caab87e4b 10-15
+  91faab5400059743 1-9,16-43,45-61
+quinoa/audio/compression_worker.py
+  538a816254079bee 21,44-45,47-49,72-76,88,101,133,154
+  0dc683821274aa7c 57-60
+  debd34ce9d68cd45 79-81
+  08926bee7c0915a2 155-157
+quinoa/ui/middle_panel.py
+  eefc29892ebe9f3f 237
+  a279af7608fd3c36 243
+  123a1acfc921bcb1 13-15
+  d09168b8ef2c33a8 288-292
+  744a519c8ac04d8c 2054,2066-2070
+  b93a7eebeebefe93 2028,2049-2050,2052-2053,2055-2058,2060,2062-2065,2071-2072,2095,2101
+  cd0f757f6949e0c1 2103-2105
+tests/manual/test_mixing.py
+  c38827d45567e38c 4
+quinoa/ui/transcribe_worker.py
+  b52c725bdea5fbba 27,32,40
+  167358a999571831 5,26,28-31,33-39,44-46,54-55,58-61,63-65,67-71,76-78,81-82,87,89,91-95,104-106,112-113,116-117,122,125,127
+  e9dd0b17375dfae4 66,72-75,79-80,83,86,88,90
+  ba0856974a24d9e7 84
+  735aab58df28dc0b 126,128
+  5e701d592ba02e29 3,12-13,22,25,51-53,56,62,96-101,103,109,123
+  a6b38d24441a5c90 85
+quinoa/transcription/manager.py
+  059f0541990d2e7b 66-75
+  86e918066147d6b3 111-112,114
+  649cb8990f797580 110
+  7d9e3a7db06f3fa4 59,61,63,78-79,82
+  173dedc3b86a6e93 1,3-58,60,62,64-65,76-77,80-81,83-109,113,115-116
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.1.7",
+  "base_commit_sha": "734c801155435fa6d785d2c48fb34a4a910a25ce",
+  "prompts": {
+    "004f23f5b3e3bd11": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "opencode-1772558955474",
+        "model": "unknown"
+      },
+      "human_author": "Ryan Swift <ryan@mlh.io>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 1,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    },
+    "012acfe950466532": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "opencode-1772558199238",
+        "model": "unknown"
+      },
+      "human_author": "Ryan Swift <ryan@mlh.io>",
+      "messages": [],
+      "total_additions": 3,
+      "total_deletions": 23,
+      "accepted_lines": 3,
+      "overriden_lines": 0
+    },
+    "018468ea8eaa490b": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "opencode-1772558332791",
+        "model": "unknown"
+      },
+      "human_author": "Ryan Swift <ryan@mlh.io>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 19,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    },
+    "03d02af8755064a0": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "opencode-1772558185866",
+        "model": "unknown"
+      },
+      "human_author": "Ryan Swift <ryan@mlh.io>",
+      "messages": [],
+      "total_additions": 29,
+      "total_deletions": 65,
+      "accepted_lines": 29,
+      "overriden_lines": 0
+    },
+    "059f0541990d2e7b": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "opencode-1772559310002",
+        "model": "unknown"
+      },
+      "human_author": "Ryan Swift <ryan@mlh.io>",
+      "messages": [],
+      "total_additions": 10,
+      "total_deletions": 0,
+      "accepted_lines": 10,
+      "overriden_lines": 0
+    },
+    "08926bee7c0915a2": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "opencode-1772559365954",
+        "model": "unknown"
+      },
+      "human_author": "Ryan Swift <ryan@mlh.io>",
+      "messages": [],
+      "total_additions": 3,
+      "total_deletions": 4,
+      "accepted_lines": 3,
+      "overriden_lines": 0
+    },
+    "0dc683821274aa7c": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "opencode-1772558966378",
+        "model": "unknown"
+      },
+      "human_author": "Ryan Swift <ryan@mlh.io>",
+      "messages": [],
+      "total_additions": 6,
+      "total_deletions": 4,
+      "accepted_lines": 4,
+      "overriden_lines": 0
+    },
+    "123a1acfc921bcb1": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "opencode-1772558978037",
+        "model": "unknown"
+      },
+      "human_author": "Ryan Swift <ryan@mlh.io>",
+      "messages": [],
+      "total_additions": 4,
+      "total_deletions": 1,
+      "accepted_lines": 3,
+      "overriden_lines": 1
+    },
+    "167358a999571831": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "opencode-1772558932682",
+        "model": "unknown"
+      },
+      "human_author": "Ryan Swift <ryan@mlh.io>",
+      "messages": [],
+      "total_additions": 58,
+      "total_deletions": 6,
+      "accepted_lines": 54,
+      "overriden_lines": 0
+    },
+    "173dedc3b86a6e93": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "opencode-1772558225867",
+        "model": "unknown"
+      },
+      "human_author": "Ryan Swift <ryan@mlh.io>",
+      "messages": [],
+      "total_additions": 104,
+      "total_deletions": 0,
+      "accepted_lines": 95,
+      "overriden_lines": 0
+    },
+    "378f67d75527b5e0": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "opencode-1772558990863",
+        "model": "unknown"
+      },
+      "human_author": "Ryan Swift <ryan@mlh.io>",
+      "messages": [],
+      "total_additions": 1,
+      "total_deletions": 1,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    },
+    "3b52ee943f9b1c54": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "opencode-1772558353546",
+        "model": "unknown"
+      },
+      "human_author": "Ryan Swift <ryan@mlh.io>",
+      "messages": [],
+      "total_additions": 7,
+      "total_deletions": 2,
+      "accepted_lines": 6,
+      "overriden_lines": 0
+    },
+    "538a816254079bee": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "opencode-1772558253235",
+        "model": "unknown"
+      },
+      "human_author": "Ryan Swift <ryan@mlh.io>",
+      "messages": [],
+      "total_additions": 18,
+      "total_deletions": 10,
+      "accepted_lines": 16,
+      "overriden_lines": 1
+    },
+    "5e701d592ba02e29": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "opencode-1772558237927",
+        "model": "unknown"
+      },
+      "human_author": "Ryan Swift <ryan@mlh.io>",
+      "messages": [],
+      "total_additions": 20,
+      "total_deletions": 11,
+      "accepted_lines": 19,
+      "overriden_lines": 0
+    },
+    "630b6bb392112c25": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "opencode-1772558952218",
+        "model": "unknown"
+      },
+      "human_author": "Ryan Swift <ryan@mlh.io>",
+      "messages": [],
+      "total_additions": 0,
+      "total_deletions": 1,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    },
+    "649cb8990f797580": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "opencode-1772558947541",
+        "model": "unknown"
+      },
+      "human_author": "Ryan Swift <ryan@mlh.io>",
+      "messages": [],
+      "total_additions": 3,
+      "total_deletions": 2,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    },
+    "735aab58df28dc0b": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "opencode-1772559743608",
+        "model": "unknown"
+      },
+      "human_author": "Ryan Swift <ryan@mlh.io>",
+      "messages": [],
+      "total_additions": 2,
+      "total_deletions": 0,
+      "accepted_lines": 2,
+      "overriden_lines": 0
+    },
+    "744a519c8ac04d8c": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "opencode-1772558901132",
+        "model": "unknown"
+      },
+      "human_author": "Ryan Swift <ryan@mlh.io>",
+      "messages": [],
+      "total_additions": 7,
+      "total_deletions": 6,
+      "accepted_lines": 6,
+      "overriden_lines": 0
+    },
+    "7a69bb632d674ecc": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "opencode-1772558208358",
+        "model": "unknown"
+      },
+      "human_author": "Ryan Swift <ryan@mlh.io>",
+      "messages": [],
+      "total_additions": 2,
+      "total_deletions": 0,
+      "accepted_lines": 2,
+      "overriden_lines": 0
+    },
+    "7ca8785e8c801f5e": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "opencode-1772559316249",
+        "model": "unknown"
+      },
+      "human_author": "Ryan Swift <ryan@mlh.io>",
+      "messages": [],
+      "total_additions": 3,
+      "total_deletions": 0,
+      "accepted_lines": 3,
+      "overriden_lines": 0
+    },
+    "7d9e3a7db06f3fa4": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "opencode-1772558941804",
+        "model": "unknown"
+      },
+      "human_author": "Ryan Swift <ryan@mlh.io>",
+      "messages": [],
+      "total_additions": 6,
+      "total_deletions": 5,
+      "accepted_lines": 6,
+      "overriden_lines": 0
+    },
+    "7e02f8577a38dfc9": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "opencode-1772559337540",
+        "model": "unknown"
+      },
+      "human_author": "Ryan Swift <ryan@mlh.io>",
+      "messages": [],
+      "total_additions": 1,
+      "total_deletions": 1,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    },
+    "86e918066147d6b3": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "opencode-1772559738807",
+        "model": "unknown"
+      },
+      "human_author": "Ryan Swift <ryan@mlh.io>",
+      "messages": [],
+      "total_additions": 3,
+      "total_deletions": 2,
+      "accepted_lines": 3,
+      "overriden_lines": 0
+    },
+    "89c0c5bf23318f60": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "opencode-1772558986960",
+        "model": "unknown"
+      },
+      "human_author": "Ryan Swift <ryan@mlh.io>",
+      "messages": [],
+      "total_additions": 4,
+      "total_deletions": 1,
+      "accepted_lines": 3,
+      "overriden_lines": 1
+    },
+    "91faab5400059743": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "opencode-1772558912195",
+        "model": "unknown"
+      },
+      "human_author": "Ryan Swift <ryan@mlh.io>",
+      "messages": [],
+      "total_additions": 55,
+      "total_deletions": 0,
+      "accepted_lines": 54,
+      "overriden_lines": 0
+    },
+    "9a3d3cf77b8a4801": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "opencode-1772559356661",
+        "model": "unknown"
+      },
+      "human_author": "Ryan Swift <ryan@mlh.io>",
+      "messages": [],
+      "total_additions": 2,
+      "total_deletions": 1,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    },
+    "9bfe7a8259e8c84d": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "opencode-1772558412786",
+        "model": "unknown"
+      },
+      "human_author": "Ryan Swift <ryan@mlh.io>",
+      "messages": [],
+      "total_additions": 1,
+      "total_deletions": 0,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    },
+    "a279af7608fd3c36": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "opencode-1772558266177",
+        "model": "unknown"
+      },
+      "human_author": "Ryan Swift <ryan@mlh.io>",
+      "messages": [],
+      "total_additions": 2,
+      "total_deletions": 0,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    },
+    "a67e89d9af86012b": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "opencode-1772558423224",
+        "model": "unknown"
+      },
+      "human_author": "Ryan Swift <ryan@mlh.io>",
+      "messages": [],
+      "total_additions": 1,
+      "total_deletions": 0,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    },
+    "a6b38d24441a5c90": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "opencode-1772559406507",
+        "model": "unknown"
+      },
+      "human_author": "Ryan Swift <ryan@mlh.io>",
+      "messages": [],
+      "total_additions": 5,
+      "total_deletions": 1,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    },
+    "abacc59bbab4780c": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "opencode-1772558919293",
+        "model": "unknown"
+      },
+      "human_author": "Ryan Swift <ryan@mlh.io>",
+      "messages": [],
+      "total_additions": 1,
+      "total_deletions": 1,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    },
+    "b33e8b8caab87e4b": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "opencode-1772559334639",
+        "model": "unknown"
+      },
+      "human_author": "Ryan Swift <ryan@mlh.io>",
+      "messages": [],
+      "total_additions": 6,
+      "total_deletions": 0,
+      "accepted_lines": 6,
+      "overriden_lines": 0
+    },
+    "b52c725bdea5fbba": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "opencode-1772559346852",
+        "model": "unknown"
+      },
+      "human_author": "Ryan Swift <ryan@mlh.io>",
+      "messages": [],
+      "total_additions": 3,
+      "total_deletions": 0,
+      "accepted_lines": 3,
+      "overriden_lines": 0
+    },
+    "b637f937ad044cf4": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "opencode-1772558348220",
+        "model": "unknown"
+      },
+      "human_author": "Ryan Swift <ryan@mlh.io>",
+      "messages": [],
+      "total_additions": 1,
+      "total_deletions": 0,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    },
+    "b7a7f2bd585a98f8": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "opencode-1772558194088",
+        "model": "unknown"
+      },
+      "human_author": "Ryan Swift <ryan@mlh.io>",
+      "messages": [],
+      "total_additions": 1,
+      "total_deletions": 4,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    },
+    "b93a7eebeebefe93": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "opencode-1772558284551",
+        "model": "unknown"
+      },
+      "human_author": "Ryan Swift <ryan@mlh.io>",
+      "messages": [],
+      "total_additions": 33,
+      "total_deletions": 42,
+      "accepted_lines": 19,
+      "overriden_lines": 0
+    },
+    "b996735285d7cea3": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "opencode-1772558373367",
+        "model": "unknown"
+      },
+      "human_author": "Ryan Swift <ryan@mlh.io>",
+      "messages": [],
+      "total_additions": 30,
+      "total_deletions": 42,
+      "accepted_lines": 16,
+      "overriden_lines": 0
+    },
+    "ba0856974a24d9e7": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "opencode-1772559432684",
+        "model": "unknown"
+      },
+      "human_author": "Ryan Swift <ryan@mlh.io>",
+      "messages": [],
+      "total_additions": 1,
+      "total_deletions": 4,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    },
+    "c022e5008c704029": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "opencode-1772558428758",
+        "model": "unknown"
+      },
+      "human_author": "Ryan Swift <ryan@mlh.io>",
+      "messages": [],
+      "total_additions": 2,
+      "total_deletions": 2,
+      "accepted_lines": 2,
+      "overriden_lines": 0
+    },
+    "c38827d45567e38c": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "opencode-1772559009457",
+        "model": "unknown"
+      },
+      "human_author": "Ryan Swift <ryan@mlh.io>",
+      "messages": [],
+      "total_additions": 1,
+      "total_deletions": 1,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    },
+    "cd0f757f6949e0c1": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "opencode-1772558905326",
+        "model": "unknown"
+      },
+      "human_author": "Ryan Swift <ryan@mlh.io>",
+      "messages": [],
+      "total_additions": 3,
+      "total_deletions": 1,
+      "accepted_lines": 3,
+      "overriden_lines": 0
+    },
+    "cf6a901b05cfe6d2": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "opencode-1772558420367",
+        "model": "unknown"
+      },
+      "human_author": "Ryan Swift <ryan@mlh.io>",
+      "messages": [],
+      "total_additions": 4,
+      "total_deletions": 0,
+      "accepted_lines": 4,
+      "overriden_lines": 0
+    },
+    "d09168b8ef2c33a8": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "opencode-1772558275218",
+        "model": "unknown"
+      },
+      "human_author": "Ryan Swift <ryan@mlh.io>",
+      "messages": [],
+      "total_additions": 5,
+      "total_deletions": 3,
+      "accepted_lines": 5,
+      "overriden_lines": 0
+    },
+    "d4c552280a79fb67": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "opencode-1772558202875",
+        "model": "unknown"
+      },
+      "human_author": "Ryan Swift <ryan@mlh.io>",
+      "messages": [],
+      "total_additions": 5,
+      "total_deletions": 2,
+      "accepted_lines": 4,
+      "overriden_lines": 0
+    },
+    "dc9b2e67394ec2aa": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "opencode-1772559342788",
+        "model": "unknown"
+      },
+      "human_author": "Ryan Swift <ryan@mlh.io>",
+      "messages": [],
+      "total_additions": 2,
+      "total_deletions": 2,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    },
+    "debd34ce9d68cd45": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "opencode-1772559363171",
+        "model": "unknown"
+      },
+      "human_author": "Ryan Swift <ryan@mlh.io>",
+      "messages": [],
+      "total_additions": 3,
+      "total_deletions": 1,
+      "accepted_lines": 3,
+      "overriden_lines": 0
+    },
+    "e9dd0b17375dfae4": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "opencode-1772559350432",
+        "model": "unknown"
+      },
+      "human_author": "Ryan Swift <ryan@mlh.io>",
+      "messages": [],
+      "total_additions": 11,
+      "total_deletions": 1,
+      "accepted_lines": 11,
+      "overriden_lines": 0
+    },
+    "ec6b606f7770d656": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "opencode-1772558433273",
+        "model": "unknown"
+      },
+      "human_author": "Ryan Swift <ryan@mlh.io>",
+      "messages": [],
+      "total_additions": 6,
+      "total_deletions": 0,
+      "accepted_lines": 6,
+      "overriden_lines": 0
+    },
+    "eefc29892ebe9f3f": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "opencode-1772558980942",
+        "model": "unknown"
+      },
+      "human_author": "Ryan Swift <ryan@mlh.io>",
+      "messages": [],
+      "total_additions": 1,
+      "total_deletions": 1,
+      "accepted_lines": 1,
+      "overriden_lines": 0
+    },
+    "f926cc41b171bb4c": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "opencode-1772558296800",
+        "model": "unknown"
+      },
+      "human_author": "Ryan Swift <ryan@mlh.io>",
+      "messages": [],
+      "total_additions": 1,
+      "total_deletions": 0,
+      "accepted_lines": 0,
+      "overriden_lines": 0
+    }
+  }
+}
