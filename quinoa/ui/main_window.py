@@ -243,9 +243,11 @@ class MainWindow(QMainWindow):
             # Connect transcription completion to sync queue
             delay_seconds = FILE_SEARCH_DELAY_MS // 1000
             self.middle_panel.transcription_completed.connect(
-                lambda rec_id: self._sync_worker.queue_for_sync(rec_id, delay_seconds)
-                if self._sync_worker
-                else None
+                lambda rec_id: (
+                    self._sync_worker.queue_for_sync(rec_id, delay_seconds)
+                    if self._sync_worker
+                    else None
+                )
             )
 
             # Start sync worker and queue existing unsynced recordings
@@ -312,7 +314,9 @@ class MainWindow(QMainWindow):
             # Connect tray notification click to show window (via TrayIconManager signal
             # so the connection survives any future icon recreation)
             self.tray_manager.message_clicked.connect(self._on_notification_clicked)
-            self.tray_manager.start_recording_requested.connect(self._on_notification_start_recording)
+            self.tray_manager.start_recording_requested.connect(
+                self._on_notification_start_recording
+            )
 
             self._notification_worker.start()
             logger.info("Notification worker started")
@@ -452,7 +456,9 @@ class MainWindow(QMainWindow):
         """Handle search result selection from left panel."""
         self._on_meeting_selected(rec_id)
         # Use singleShot(0) to wait until the next event loop iteration (after rendering)
-        QTimer.singleShot(0, lambda: self.middle_panel.diarized_transcript_view.highlight_search_term(search_term))
+        QTimer.singleShot(
+            0, lambda: self.middle_panel.diarized_transcript_view.highlight_search_term(search_term)
+        )
 
     def _on_calendar_meeting_selected(self, event_id: str):
         """Handle calendar event selection (unrecorded meeting)."""
@@ -471,6 +477,11 @@ class MainWindow(QMainWindow):
 
     def _on_new_meeting(self):
         """Handle new meeting request - return to idle/recording mode."""
+        if self.middle_panel.recording_session and self.middle_panel.current_rec_id:
+            # If recording, navigate back to current recording
+            self._on_meeting_selected(self.middle_panel.current_rec_id)
+            return
+
         self.middle_panel.clear_view()
         self.right_panel.set_viewing_context(None)
 

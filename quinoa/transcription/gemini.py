@@ -1,4 +1,5 @@
 import logging
+import mimetypes
 import os
 
 from google import genai
@@ -52,6 +53,22 @@ Keep utterances reasonably sized - split long monologues into paragraphs.
 """
 
 
+def _get_mime_type(audio_path: str) -> str:
+    """Determine MIME type from path, with normalization for Gemini."""
+    mime_type, _ = mimetypes.guess_type(audio_path)
+    if not mime_type:
+        if audio_path.lower().endswith(".wav"):
+            return "audio/wav"
+        if audio_path.lower().endswith(".flac"):
+            return "audio/flac"
+        return "application/octet-stream"
+
+    # Normalize common variations that might confuse some SDK versions or backends
+    if mime_type == "audio/x-wav":
+        return "audio/wav"
+    return mime_type
+
+
 class GeminiTranscriber:
     def __init__(self, api_key: str | None = None) -> None:
         self.api_key = api_key or os.environ.get("GEMINI_API_KEY")
@@ -63,10 +80,13 @@ class GeminiTranscriber:
         # Upload file
         logger.info("Uploading %s...", audio_path)
 
+        mime_type = _get_mime_type(audio_path)
+        upload_config = types.UploadFileConfig(mime_type=mime_type)
+
         try:
             # Open in binary mode for more robust upload handling by the SDK
             with open(audio_path, "rb") as f:
-                audio_file = self.client.files.upload(file=f)
+                audio_file = self.client.files.upload(file=f, config=upload_config)
         except Exception as e:
             # Specific handling for the 8MB granularity bug in some versions of the SDK (e.g. 0.3.0).
             # The backend enforces 8MB chunks but some SDK versions fail to align buffers when
@@ -78,7 +98,7 @@ class GeminiTranscriber:
                 logger.warning(
                     "Chunk granularity error detected (%s), retrying with raw path...", err_msg
                 )
-                audio_file = self.client.files.upload(file=audio_path)
+                audio_file = self.client.files.upload(file=audio_path, config=upload_config)
             else:
                 logger.exception("Transcription upload failed")
                 raise
@@ -107,7 +127,6 @@ class GeminiTranscriber:
                 response_mime_type="application/json",
                 response_schema=TranscriptionResponse,
                 max_output_tokens=65536,  # Allow long transcripts (default 8192 is too small)
-                audio_timestamp=True,
             ),
         )
 

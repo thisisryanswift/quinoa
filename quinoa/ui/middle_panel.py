@@ -335,7 +335,9 @@ class MiddlePanel(QWidget):
         self.diarized_transcript_view.set_as_me_requested.connect(self._set_speaker_as_me)
         self.diarized_transcript_view.merge_speakers_requested.connect(self._merge_speakers)
         self.diarized_transcript_view.timestamp_clicked.connect(self._on_timestamp_clicked)
-        self.audio_player.player.positionChanged.connect(self.diarized_transcript_view.highlight_utterance_at_time)
+        self.audio_player.player.positionChanged.connect(
+            self.diarized_transcript_view.highlight_utterance_at_time
+        )
 
         self.content_stack.addWidget(self.diarized_transcript_view)
 
@@ -1102,9 +1104,9 @@ class MiddlePanel(QWidget):
 
     def load_calendar_event(self, event_id: str):
         """Load an unrecorded calendar event for display."""
+        # If recording, save current notes before switching view
         if self.recording_session:
-            # Don't switch while recording
-            return
+            self._save_notes()
 
         event = self.db.get_calendar_event(event_id)
         if not event:
@@ -1180,9 +1182,12 @@ class MiddlePanel(QWidget):
         )
 
         # Show recording controls for upcoming/in-progress meetings
-        if is_future or is_in_progress:
+        if is_future or is_in_progress or self.recording_session:
             self.recording_controls_container.setVisible(True)
-            if is_in_progress:
+            if self.recording_session:
+                # Keep current status label (it has the timer)
+                pass
+            elif is_in_progress:
                 self.status_label.setText("Meeting in progress")
             else:
                 self.status_label.setText("Upcoming meeting")
@@ -1210,9 +1215,9 @@ class MiddlePanel(QWidget):
 
     def load_meeting(self, rec_id: str):
         """Load a meeting for viewing."""
+        # If recording, save current notes before switching view
         if self.recording_session:
-            # Don't switch while recording
-            return
+            self._save_notes()
 
         # Fetch recording data first
         rec = self.db.get_recording(rec_id)
@@ -1225,22 +1230,29 @@ class MiddlePanel(QWidget):
 
         self._viewing_rec_id = rec_id
         self._viewing_event_id = None
-        self._mode = PanelMode.VIEWING
+
+        # If this is the active recording, stay in RECORDING mode
+        if self.recording_session and rec_id == self.current_rec_id:
+            self._mode = PanelMode.RECORDING
+        else:
+            self._mode = PanelMode.VIEWING
 
         # Check for smart suggestions
         # Check if this recording is linked to an event
         # I'll implement _check_folder_suggestion to handle this lookup.
         self._check_folder_suggestion(rec, is_recording=True)
 
-        # Enable all tabs
-        self.transcript_btn.setEnabled(True)
-        self.enhanced_btn.setEnabled(True)
-        self.trim_btn.setEnabled(True)
-
         # Load and cache all data
         transcript_data = self.db.get_transcript(rec_id)
         self._cached_notes = self.db.get_notes(rec_id)
         self._cached_enhanced = self.db.get_enhanced_notes(rec_id)
+
+        # Enable tabs (only for historic meetings)
+        is_active = self.recording_session and rec_id == self.current_rec_id
+        self.transcript_btn.setEnabled(not is_active and bool(transcript_data))
+        self.enhanced_btn.setEnabled(not is_active and bool(self._cached_notes and transcript_data))
+        self.trim_btn.setEnabled(not is_active)
+        self.transcribe_btn.setEnabled(not is_active)
 
         # Load utterances and speaker names
         if transcript_data:
@@ -1282,20 +1294,24 @@ class MiddlePanel(QWidget):
         if audio_path and os.path.exists(audio_path):
             self.audio_player.load_audio(audio_path)
             self.audio_player.setVisible(True)
+        elif is_active:
+            self.audio_player.setVisible(False)
         else:
             self.audio_player.set_error("Audio file not found")
             self.audio_player.setVisible(True)
 
-        # Hide recording controls, show view selector
-        self.recording_controls_container.setVisible(False)
+        # Hide recording controls if not recording, show view selector
+        if not self.recording_session:
+            self.recording_controls_container.setVisible(False)
         self.view_selector_widget.setVisible(True)
-        self._current_view = ViewType.TRANSCRIPT
-        self.transcript_btn.setChecked(True)
 
-        # Update button states
-        self.enhanced_btn.setEnabled(bool(self._cached_notes and transcript_data))
+        if is_active:
+            self._current_view = ViewType.NOTES
+            self.notes_btn.setChecked(True)
+        else:
+            self._current_view = ViewType.TRANSCRIPT
+            self.transcript_btn.setChecked(True)
 
-        self.transcribe_btn.setEnabled(True)
         self._update_view_content()
 
     def _check_folder_suggestion(self, item: dict, is_recording: bool):
@@ -1407,12 +1423,12 @@ class MiddlePanel(QWidget):
 
     def clear_view(self):
         """Clear the view and return to idle mode."""
-        if self.recording_session:
+        if self.recording_session and self.current_rec_id:
+            # If recording, go back to recording notes view
+            self.load_meeting(self.current_rec_id)
             return
 
-        # Save notes if we were editing them
-        if self._mode == PanelMode.VIEWING and self._current_view == ViewType.NOTES:
-            self._save_current_notes()
+        self._save_current_notes()
 
         self._viewing_rec_id = None
         self._viewing_event_id = None

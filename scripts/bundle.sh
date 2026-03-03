@@ -3,7 +3,7 @@
 
 set -e
 
-PROJECT_ROOT="/home/rswift/dev/personal/quinoa"
+PROJECT_ROOT="/home/rswift/dev/quinoa"
 BIN_DEST="/home/rswift/.local/bin/quinoa"
 DESKTOP_DEST="/home/rswift/.local/share/applications/quinoa.desktop"
 ICON_DEST="/home/rswift/.local/share/icons/hicolor/scalable/apps/quinoa.png"

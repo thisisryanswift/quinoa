@@ -68,20 +68,32 @@ class Config:
         except Exception as e:
             logger.warning("Failed to save config: %s", e)
 
+    def _get_keyring_value(self, user: str, default: Any = None) -> Any:
+        """Robustly retrieve a password from the keyring."""
+        try:
+            raw_data = keyring.get_password(SERVICE_NAME, user)
+            if not raw_data:
+                return default
+
+            if isinstance(raw_data, bytes):
+                try:
+                    return raw_data.decode("utf-8")
+                except UnicodeDecodeError:
+                    logger.warning("Corrupt binary data for %s in keyring, clearing.", user)
+                    with contextlib.suppress(Exception):
+                        keyring.set_password(SERVICE_NAME, user, "")
+                    return default
+            return raw_data
+        except Exception as e:
+            logger.warning("Keyring error for %s: %s", user, e)
+            return default
+
     def get(self, key: str, default: Any | None = None) -> Any:
         # Keys stored in keyring for security
         if key == "api_key":
-            try:
-                return keyring.get_password(SERVICE_NAME, API_KEY_USER) or default
-            except Exception as e:
-                logger.warning("Keyring error: %s", e)
-                return default
+            return self._get_keyring_value(API_KEY_USER, default)
         if key == "file_search_store_name":
-            try:
-                return keyring.get_password(SERVICE_NAME, FILE_SEARCH_STORE_USER) or default
-            except Exception as e:
-                logger.warning("Keyring error: %s", e)
-                return default
+            return self._get_keyring_value(FILE_SEARCH_STORE_USER, default)
         return self._data.get(key, default)
 
     def set(self, key: str, value: Any) -> None:
@@ -91,8 +103,8 @@ class Config:
                 if value:
                     keyring.set_password(SERVICE_NAME, API_KEY_USER, value)
                 else:
-                    with contextlib.suppress(keyring.errors.PasswordDeleteError):
-                        keyring.delete_password(SERVICE_NAME, API_KEY_USER)
+                    with contextlib.suppress(Exception):
+                        keyring.set_password(SERVICE_NAME, API_KEY_USER, "")
             except Exception as e:
                 logger.warning("Failed to save to keyring: %s", e)
         elif key == "file_search_store_name":
@@ -100,8 +112,8 @@ class Config:
                 if value:
                     keyring.set_password(SERVICE_NAME, FILE_SEARCH_STORE_USER, value)
                 else:
-                    with contextlib.suppress(keyring.errors.PasswordDeleteError):
-                        keyring.delete_password(SERVICE_NAME, FILE_SEARCH_STORE_USER)
+                    with contextlib.suppress(Exception):
+                        keyring.set_password(SERVICE_NAME, FILE_SEARCH_STORE_USER, "")
             except Exception as e:
                 logger.warning("Failed to save to keyring: %s", e)
         else:

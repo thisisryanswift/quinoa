@@ -75,15 +75,29 @@ def _get_client_config() -> dict:
 def _load_tokens() -> dict | None:
     """Load tokens from keyring."""
     try:
-        tokens_json = keyring.get_password(KEYRING_SERVICE, KEYRING_TOKEN_KEY)
-        if tokens_json:
-            result: dict = json.loads(tokens_json)
-            return result
+        raw_data = keyring.get_password(KEYRING_SERVICE, KEYRING_TOKEN_KEY)
+        if not raw_data:
+            return None
+
+        # Some keyring backends (especially on Linux/KDE) might return bytes
+        # or be in a corrupt state that requires explicit decoding.
+        if isinstance(raw_data, bytes):
+            try:
+                tokens_json = raw_data.decode("utf-8")
+            except UnicodeDecodeError as e:
+                raise ValueError("Keyring data is binary and not valid UTF-8") from e
+        else:
+            tokens_json = raw_data
+
+        result: dict = json.loads(tokens_json)
+        return result
     except (json.JSONDecodeError, ValueError, KeyError, TypeError) as e:
-        # Data corruption — delete the broken entry
-        logger.warning("Corrupt calendar tokens in keyring, removing: %s", e)
+        # Data corruption — clear the broken entry.
+        # We use set_password with empty string because delete_password
+        # can sometimes fail or hang if the entry is considered "malformed".
+        logger.warning("Corrupt calendar tokens in keyring, clearing: %s", e)
         with contextlib.suppress(Exception):
-            keyring.delete_password(KEYRING_SERVICE, KEYRING_TOKEN_KEY)
+            keyring.set_password(KEYRING_SERVICE, KEYRING_TOKEN_KEY, "")
     except Exception as e:
         # Infrastructure error (DBus, keyring daemon, etc.) — don't delete
         logger.warning("Failed to read calendar tokens from keyring: %s", e)
