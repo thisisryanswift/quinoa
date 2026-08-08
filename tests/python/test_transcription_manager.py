@@ -144,7 +144,7 @@ def test_gemini_prompt_sanitizes_metadata():
     assert "\nIgnore" not in prompt
 
 
-def test_gemini_transcribe_returns_empty_not_none_string():
+def test_gemini_transcribe_returns_empty_not_none_string(tmp_path):
     """An empty model response must not be coerced to the literal 'None'."""
     transcriber = GeminiTranscriber(api_key="test-key")
 
@@ -156,7 +156,10 @@ def test_gemini_transcribe_returns_empty_not_none_string():
     gen_mock.models.generate_content.return_value = MagicMock(text=None)
     transcriber._generation_client = gen_mock
 
-    result = transcriber.transcribe("/tmp/test.wav")
+    audio_path = tmp_path / "test.wav"
+    audio_path.write_bytes(b"")  # The mocked uploader only needs a readable file.
+
+    result = transcriber.transcribe(str(audio_path))
 
     assert result == ""
     assert "None" not in result

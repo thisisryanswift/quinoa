@@ -52,3 +52,7 @@ Hosted CI run 31271576705 confirmed uv 0.11.14 but still rejected the lock becau
 **2026-08-08T18:33:15Z**
 
 Hosted CI run 31272131092 passed locked sync, Ruff, and Mypy, then failed Python test collection because the clean Ubuntu runner lacked `libEGL.so.1`, required to import PyQt6 even with QT_QPA_PLATFORM=offscreen. Add the Ubuntu `libegl1` runtime package; no source or test behavior change is required.
+
+**2026-08-08T18:41:22Z**
+
+Hosted CI run 31272298933 reached all 118 tests and exposed two clean-runner assumptions: the integration test requires the mock audio backend, while root sync installed real PipeWire; one transcription test relied on a stale local `/tmp/test.wav`. The canonical gate now builds mock before Python tests and restores real afterward, and the transcription test creates its own tmp_path file. Focused tests and the full local gate pass.

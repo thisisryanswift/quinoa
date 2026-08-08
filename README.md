@@ -161,9 +161,10 @@ The canonical quality gate is:
 ./scripts/check.sh
 ```
 
-It checks locked dependencies, Ruff format and lint, Mypy, Python tests, Rust
-format, Rust real/mock checks and real-audio tests, shell syntax, and desktop
-entry validation.
+It checks locked dependencies, Ruff format and lint, Mypy, Python tests against
+a mock audio build, Rust format, Rust real/mock checks and real-audio tests,
+and then restores the real PipeWire extension. It also checks shell syntax and
+desktop entry validation.
 
 Run only the Python tests with:
 

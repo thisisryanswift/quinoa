@@ -18,6 +18,11 @@ uv run ruff check quinoa tests
 echo "==> uv run mypy quinoa tests"
 uv run mypy quinoa tests
 
+echo "==> Build mock audio extension for Python tests"
+cd quinoa_audio
+uv run maturin develop --no-default-features --features extension-module,mock
+cd ..
+
 echo "==> uv run pytest tests/python"
 uv run pytest tests/python
 
@@ -38,6 +43,9 @@ cargo check --locked --no-default-features --features mock
 
 echo "==> cargo test --locked --no-default-features --features real-audio"
 cargo test --locked --no-default-features --features real-audio
+
+echo "==> Restore real PipeWire extension"
+uv run maturin develop
 
 echo "==> bash -n scripts/bundle.sh"
 bash -n scripts/bundle.sh

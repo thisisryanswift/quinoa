@@ -51,8 +51,9 @@ Run the canonical verifier before finishing:
 ```
 
 The script checks, in order: locked UV dependencies, Ruff format and lint,
-Mypy, Python tests, Rust format, Rust mock/real checks and real-audio tests,
-shell syntax, and desktop-file validation.
+Mypy, Python tests against a mock audio build, Rust format, Rust mock/real
+checks and real-audio tests, and then restores the real PipeWire extension.
+It also checks shell syntax and desktop-file validation.
 
 ### Python
 
