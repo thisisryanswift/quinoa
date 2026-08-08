@@ -35,3 +35,7 @@ Implementation delegation note: the configured SWE worker failed to connect on t
 **2026-08-08T20:24:53Z**
 
 Fresh pre-production evidence on approved design 767811d03a62adb84684d1364804d360f50aa69ff4dc519d6ac8af041ca3e236: warning-as-error focused suite passes 40 tests; full canonical gate passes 163 Python tests with no SQLite datetime warnings, 12 mock and 17 real Rust tests, formatting/lint/Mypy, and restores the real extension. Migration tests cover every column, UTC/NYC/chat policies, malformed and DST-indeterminate rollback, backup integrity/non-overwrite, version idempotency, in-memory isolation, concurrent initialization, summer/winter query bounds, and display UTC boundaries. Independent review reports no material defects after focused consumer/backup improvements. Production database remains unopened.
+
+**2026-08-08T20:38:54Z**
+
+Hosted CI blocker on run 31276900633 / commit 2436642: UV sync, Ruff, Mypy, and 162/163 Python tests passed. tests/python/test_sync_worker.py::test_sync_recording_uploads_before_deleting_old_document failed because its freshly constructed SyncWorker QThread wrapper was already deleted when emitting sync_completed; the generic exception handler then also failed emitting sync_failed with `RuntimeError: wrapped C/C++ object of type SyncWorker has been deleted`. Local Python 3.13 full suite passes. Production database remains unopened and unmodified. Next step is a bounded Python 3.12/order-isolation reproduction of Qt application/QThread lifetime before any fix.
