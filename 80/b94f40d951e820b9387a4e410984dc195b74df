@@ -1,0 +1,19 @@
+tests/python/test_calendar_auth.py
+  s_222efbf49d8651::t_499954f90f0312 57-64,66
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "80b94f40d951e820b9387a4e410984dc195b74df",
+  "prompts": {},
+  "sessions": {
+    "s_222efbf49d8651": {
+      "agent_id": {
+        "tool": "windsurf",
+        "id": "pyrite-reward",
+        "model": "unknown"
+      },
+      "human_author": "Ryan Swift <git@thisisryanswift.com>"
+    }
+  }
+}
