@@ -42,6 +42,9 @@ dev = [
     "types-Markdown",
 ]
 
+[tool.uv]
+exclude-newer = "7 days"
+
 [tool.maturin]
 features = ["extension-module", "real-audio"]
 module-name = "quinoa_audio"

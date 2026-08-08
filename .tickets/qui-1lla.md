@@ -44,3 +44,7 @@ Hosted CI run 31271459295 failed in : setup-uv@v6 floated to uv 0.12.3, which re
 **2026-08-08T18:16:32Z**
 
 Correction to prior CI note: the failed step was `uv sync --locked --all-groups --python 3.12`. A shell quoting error omitted that command text from the preceding note and ran a harmless local locked sync, which removed the previously installed mock extension package from the venv. Source files and lockfiles were unchanged; final verification will rebuild the real extension after the CI fix.
+
+**2026-08-08T18:30:21Z**
+
+Hosted CI run 31271576705 confirmed uv 0.11.14 but still rejected the lock because the lock was generated with global `exclude-newer = "7 days"` and CI lacked that resolution policy. User explicitly approved promoting the same seven-day minimum package-age policy into `[tool.uv]`, preserving rather than weakening the existing supply-chain control.
