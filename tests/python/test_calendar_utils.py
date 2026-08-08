@@ -1,4 +1,5 @@
 import json
+
 from quinoa.calendar.utils import parse_attendee_names
 
 

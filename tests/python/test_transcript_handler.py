@@ -59,6 +59,7 @@ def test_parse_valid_json():
     assert "Me: Hello world" in result["transcript"]
     assert "[00:01] Me: Hello world" in result["transcript"]
     assert not result["parse_error"]
+    assert result["partial"] is False
 
 
 def test_parse_markdown_fences():
@@ -94,6 +95,7 @@ def test_parse_truncated_json_recovery():
     assert result["utterances"][0]["text"] == "First message"
     assert result["utterances"][0]["start_time"] == "00:01"
     assert not result["parse_error"]
+    assert result["partial"] is True
 
 
 def test_parse_escaped_characters_recovery():
@@ -192,6 +194,7 @@ def test_parse_braces_limitation_recovery():
 def test_parse_empty_garbage():
     result = parse_transcription_result("Not even close to JSON")
     assert result["parse_error"]
+    assert result["partial"] is False
     assert result["utterances"] == []
 
 

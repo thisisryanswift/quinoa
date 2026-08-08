@@ -178,7 +178,7 @@ fn subscribe_device_changes() -> PyResult<DeviceMonitor> {
     {
         // Mock implementation
         use std::sync::mpsc::channel;
-        use std::sync::{Arc, Mutex};
+        use std::sync::Mutex;
         let (event_tx, event_rx) = channel();
         // Send a fake event
         let _ = event_tx.send(DeviceEvent {

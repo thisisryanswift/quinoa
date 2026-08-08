@@ -1,7 +1,9 @@
 """Calendar panel - Meetings-first navigation with calendar integration."""
 
+import html
 import json
 import logging
+import sqlite3
 from datetime import datetime, timedelta
 
 from PyQt6.QtCore import Qt, pyqtSignal
@@ -145,7 +147,9 @@ class CalendarPanel(QWidget):
         self.meeting_list.setStyleSheet("QListWidget::item { padding: 8px 6px; }")
 
         # Connect scroll event for lazy loading
-        self.meeting_list.verticalScrollBar().valueChanged.connect(self._on_scroll)
+        scroll_bar = self.meeting_list.verticalScrollBar()
+        if scroll_bar is not None:
+            scroll_bar.valueChanged.connect(self._on_scroll)
 
         self.view_stack.addWidget(self.meeting_list)
 
@@ -165,7 +169,9 @@ class CalendarPanel(QWidget):
         self.folder_tree = FolderTree()
         self.folder_tree.setHeaderHidden(True)
         self.folder_tree.setColumnCount(1)
-        self.folder_tree.header().setStretchLastSection(True)
+        header = self.folder_tree.header()
+        if header is not None:
+            header.setStretchLastSection(True)
         self.folder_tree.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
 
         self.folder_tree.setDragEnabled(True)
@@ -409,6 +415,8 @@ class CalendarPanel(QWidget):
 
             # Parent folder items
             root = self.folder_tree.invisibleRootItem()
+            if root is None:
+                return
             for folder in folders:
                 item = folder_map[folder["id"]]
                 parent_id = folder["parent_id"]
@@ -570,7 +578,7 @@ class CalendarPanel(QWidget):
                 root.addChild(uncategorized_item)
                 uncategorized_item.setExpanded(True)
 
-        except Exception as e:
+        except (sqlite3.Error, KeyError, ValueError, TypeError) as e:
             logger.error("Error refreshing folder tree: %s", e)
 
     def _on_search_text_changed(self, text: str):
@@ -583,8 +591,12 @@ class CalendarPanel(QWidget):
             self.new_folder_btn.setVisible(True)
             # Reset tree visibility
             root = self.folder_tree.invisibleRootItem()
+            if root is None:
+                return
             for i in range(root.childCount()):
-                self._filter_recursive(root.child(i), "")
+                child = root.child(i)
+                if child is not None:
+                    self._filter_recursive(child, "")
             return
 
         self.new_folder_btn.setVisible(False)
@@ -629,6 +641,21 @@ class CalendarPanel(QWidget):
         except (ValueError, TypeError):
             date_str = ""
 
+        # Escape user content before inserting into rich text. FTS highlight
+        # markers are private-use-area tokens that are unlikely to collide with
+        # user text, but are not a cryptographic guarantee.
+        SNIP_START = "\ue000BEG\ue000"
+        SNIP_END = "\ue000END\ue000"
+        safe_title = html.escape(title)
+        safe_date = html.escape(date_str)
+        safe_snippet = (
+            html.escape(snippet)
+            .replace(SNIP_START, "<b>")
+            .replace(SNIP_END, "</b>")
+            if snippet
+            else ""
+        )
+
         # Create widget for rich text
         widget = QWidget()
         layout = QVBoxLayout(widget)
@@ -636,13 +663,17 @@ class CalendarPanel(QWidget):
         layout.setSpacing(2)
 
         # Header: Title + Date
-        header_lbl = QLabel(f"<b>{title}</b> <span style='color: #888;'>{date_str}</span>")
+        header_lbl = QLabel(
+            f"<b>{safe_title}</b> <span style='color: #888;'>{safe_date}</span>"
+        )
         header_lbl.setTextFormat(Qt.TextFormat.RichText)
         layout.addWidget(header_lbl)
 
         # Snippet
-        if snippet:
-            snippet_lbl = QLabel(f"<span style='color: #ccc;'>...{snippet}...</span>")
+        if safe_snippet:
+            snippet_lbl = QLabel(
+                f"<span style='color: #ccc;'>...{safe_snippet}...</span>"
+            )
             snippet_lbl.setTextFormat(Qt.TextFormat.RichText)
             snippet_lbl.setWordWrap(True)
             layout.addWidget(snippet_lbl)
@@ -688,7 +719,7 @@ class CalendarPanel(QWidget):
         """Handle item dropped into a folder."""
         try:
             self.db.set_recording_folder(rec_id, folder_id)
-        except Exception as e:
+        except (sqlite3.Error, KeyError, ValueError, TypeError) as e:
             logger.error("Error moving recording: %s", e)
             self._refresh_history_tree()  # Revert on error
 
@@ -728,18 +759,21 @@ class CalendarPanel(QWidget):
 
             # Move to folder submenu
             move_menu = menu.addMenu("Move to Folder")
-            folders = self.db.get_folders()
+            if move_menu is not None:
+                folders = self.db.get_folders()
 
-            # Add Uncategorized option
-            uncat_action = QAction("Uncategorized", self)
-            uncat_action.triggered.connect(lambda: self._move_recording(rec_id, None))
-            move_menu.addAction(uncat_action)
-            move_menu.addSeparator()
+                # Add Uncategorized option
+                uncat_action = QAction("Uncategorized", self)
+                uncat_action.triggered.connect(lambda: self._move_recording(rec_id, None))
+                move_menu.addAction(uncat_action)
+                move_menu.addSeparator()
 
-            for folder in folders:
-                action = QAction(folder["name"], self)
-                action.triggered.connect(lambda f=folder: self._move_recording(rec_id, f["id"]))
-                move_menu.addAction(action)
+                for folder in folders:
+                    action = QAction(folder["name"], self)
+                    action.triggered.connect(
+                        lambda f=folder: self._move_recording(rec_id, f["id"])
+                    )
+                    move_menu.addAction(action)
 
             menu.addSeparator()
 
@@ -756,20 +790,21 @@ class CalendarPanel(QWidget):
 
             # Move to folder submenu (for events)
             move_menu = menu.addMenu("Move to Folder")
-            folders = self.db.get_folders()
+            if move_menu is not None:
+                folders = self.db.get_folders()
 
-            # Add Uncategorized option
-            uncat_action = QAction("Uncategorized", self)
-            uncat_action.triggered.connect(lambda: self._move_calendar_event(event_id, None))
-            move_menu.addAction(uncat_action)
-            move_menu.addSeparator()
+                # Add Uncategorized option
+                uncat_action = QAction("Uncategorized", self)
+                uncat_action.triggered.connect(lambda: self._move_calendar_event(event_id, None))
+                move_menu.addAction(uncat_action)
+                move_menu.addSeparator()
 
-            for folder in folders:
-                action = QAction(folder["name"], self)
-                action.triggered.connect(
-                    lambda f=folder: self._move_calendar_event(event_id, f["id"])
-                )
-                move_menu.addAction(action)
+                for folder in folders:
+                    action = QAction(folder["name"], self)
+                    action.triggered.connect(
+                        lambda f=folder: self._move_calendar_event(event_id, f["id"])
+                    )
+                    move_menu.addAction(action)
 
             menu.addSeparator()
 
@@ -791,14 +826,16 @@ class CalendarPanel(QWidget):
             delete_action.triggered.connect(lambda: self._delete_folder(folder_id))
             menu.addAction(delete_action)
 
-        menu.exec(self.folder_tree.viewport().mapToGlobal(position))
+        viewport = self.folder_tree.viewport()
+        if viewport is not None:
+            menu.exec(viewport.mapToGlobal(position))
 
     def _move_calendar_event(self, event_id: str, folder_id: str | None):
         """Move a calendar event to a folder."""
         try:
             self.db.set_calendar_event_folder(event_id, folder_id)
             self._refresh_history_tree()
-        except Exception as e:
+        except (sqlite3.Error, KeyError, ValueError, TypeError) as e:
             QMessageBox.critical(self, "Error", f"Failed to move event: {e}")
 
     def _create_folder(self):
@@ -810,7 +847,7 @@ class CalendarPanel(QWidget):
             try:
                 self.db.create_folder(folder_id, name)
                 self._refresh_history_tree()
-            except Exception as e:
+            except (sqlite3.Error, KeyError, ValueError, TypeError) as e:
                 QMessageBox.critical(self, "Error", f"Failed to create folder: {e}")
 
     def _rename_folder(self, folder_id: str, current_name: str):
@@ -819,7 +856,7 @@ class CalendarPanel(QWidget):
             try:
                 self.db.update_folder(folder_id, name=new_name)
                 self._refresh_history_tree()
-            except Exception as e:
+            except (sqlite3.Error, KeyError, ValueError, TypeError) as e:
                 QMessageBox.critical(self, "Error", f"Failed to rename folder: {e}")
 
     def _delete_folder(self, folder_id: str):
@@ -834,14 +871,14 @@ class CalendarPanel(QWidget):
             try:
                 self.db.delete_folder(folder_id)
                 self._refresh_history_tree()
-            except Exception as e:
+            except (sqlite3.Error, KeyError, ValueError, TypeError) as e:
                 QMessageBox.critical(self, "Error", f"Failed to delete folder: {e}")
 
     def _move_recording(self, rec_id: str, folder_id: str | None):
         try:
             self.db.set_recording_folder(rec_id, folder_id)
             self._refresh_history_tree()
-        except Exception as e:
+        except (sqlite3.Error, KeyError, ValueError, TypeError) as e:
             QMessageBox.critical(self, "Error", f"Failed to move recording: {e}")
 
     def _rename_recording_from_tree(self, item: QTreeWidgetItem):
@@ -863,7 +900,7 @@ class CalendarPanel(QWidget):
                 self.db.update_recording_title(rec_id, new_title)
                 self._refresh_history_tree()
                 self.meeting_renamed.emit(rec_id, new_title)
-            except Exception as e:
+            except (sqlite3.Error, KeyError, ValueError, TypeError) as e:
                 QMessageBox.critical(self, "Error", f"Failed to rename recording: {e}")
 
     def _delete_recording_from_tree(self, item: QTreeWidgetItem):
@@ -1186,7 +1223,9 @@ class CalendarPanel(QWidget):
                     )
                     menu.addAction(hide_action)
 
-        menu.exec(self.meeting_list.viewport().mapToGlobal(position))
+        viewport = self.meeting_list.viewport()
+        if viewport is not None:
+            menu.exec(viewport.mapToGlobal(position))
 
     def _hide_calendar_event(self, event_id: str, title: str):
         """Hide a calendar event from the list."""
@@ -1203,7 +1242,7 @@ class CalendarPanel(QWidget):
             try:
                 self.db.set_calendar_event_hidden(event_id, True)
                 self.refresh()
-            except Exception as e:
+            except (sqlite3.Error, KeyError, ValueError, TypeError) as e:
                 QMessageBox.critical(self, "Error", f"Failed to hide meeting: {e}")
 
     def _rename_recording(self, item: QListWidgetItem):
@@ -1227,7 +1266,7 @@ class CalendarPanel(QWidget):
                 self.db.update_recording_title(rec_id, new_title)
                 self.refresh()
                 self.meeting_renamed.emit(rec_id, new_title)
-            except Exception as e:
+            except (sqlite3.Error, KeyError, ValueError, TypeError) as e:
                 QMessageBox.critical(self, "Error", f"Failed to rename recording: {e}")
 
     def _delete_recording(self, item: QListWidgetItem):
@@ -1258,7 +1297,7 @@ class CalendarPanel(QWidget):
                     self._selected_id = None
                     self._selected_type = None
                 self.refresh()
-            except Exception as e:
+            except (sqlite3.Error, KeyError, ValueError, TypeError) as e:
                 QMessageBox.critical(self, "Error", f"Failed to delete recording: {e}")
 
     def _on_impromptu_clicked(self):
@@ -1301,12 +1340,12 @@ class CalendarPanel(QWidget):
         # Tree items use a prefixed format in UserRole: "rec:{id}" or "event:{id}"
         it = QTreeWidgetItemIterator(self.folder_tree)
         while it.value():
-            item = it.value()
-            if not item:
+            tree_item = it.value()
+            if not tree_item:
                 it += 1
                 continue
 
-            data = item.data(0, Qt.ItemDataRole.UserRole)
+            data = tree_item.data(0, Qt.ItemDataRole.UserRole)
             if not data or not isinstance(data, str):
                 it += 1
                 continue
@@ -1318,14 +1357,14 @@ class CalendarPanel(QWidget):
             if found:
                 self._switch_view(1)
                 # Ensure parents are expanded
-                parent = item.parent()
+                parent = tree_item.parent()
                 while parent:
                     parent.setExpanded(True)
                     parent = parent.parent()
 
-                self.folder_tree.setCurrentItem(item)
-                self._on_tree_item_clicked(item, 0)  # Triggers signals
-                self.folder_tree.scrollToItem(item)
+                self.folder_tree.setCurrentItem(tree_item)
+                self._on_tree_item_clicked(tree_item, 0)  # Triggers signals
+                self.folder_tree.scrollToItem(tree_item)
                 return True
             it += 1
 

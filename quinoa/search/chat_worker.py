@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import logging
 from typing import TYPE_CHECKING
 
+import httpx
+from google.genai import errors
 from PyQt6.QtCore import QThread, pyqtSignal
 
 from quinoa.search.file_search import FileSearchError, FileSearchManager
@@ -15,8 +18,11 @@ if TYPE_CHECKING:
 class ChatWorker(QThread):
     """Background thread for chat queries to File Search."""
 
+    # ``response_ready`` and ``error`` carry the job outcome.  ``done`` is
+    # emitted unconditionally from ``finally`` for safe process-lifetime cleanup.
     response_ready = pyqtSignal(str, list)  # response, citations
     error = pyqtSignal(str)
+    done = pyqtSignal()
 
     def __init__(
         self,
@@ -31,6 +37,14 @@ class ChatWorker(QThread):
         self.history = history
         self.meeting_context = meeting_context
 
+    def cancel(self) -> None:
+        """Cooperatively cancel the query.
+
+        ChatWorker does not own a per-worker HTTP client (it uses the shared
+        FileSearchManager), so we only request interruption.
+        """
+        self.requestInterruption()
+
     def run(self) -> None:
         """Execute the chat query."""
         try:
@@ -39,8 +53,20 @@ class ChatWorker(QThread):
                 chat_history=self.history,
                 meeting_context=self.meeting_context,
             )
+
+            if self.isInterruptionRequested():
+                return
+
             self.response_ready.emit(response, citations)
-        except FileSearchError as e:
-            self.error.emit(str(e))
+        except (FileSearchError, errors.APIError, httpx.HTTPError) as e:
+            if not self.isInterruptionRequested():
+                logger = logging.getLogger("quinoa")
+                logger.warning("Chat query failed: %s", e)
+                self.error.emit(str(e))
         except Exception as e:
-            self.error.emit(f"Unexpected error: {e}")
+            if not self.isInterruptionRequested():
+                logger = logging.getLogger("quinoa")
+                logger.exception("Unexpected chat error")
+                self.error.emit(f"Unexpected error: {e}")
+        finally:
+            self.done.emit()

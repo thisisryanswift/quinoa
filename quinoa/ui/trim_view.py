@@ -36,7 +36,11 @@ class AnalysisWorker(QThread):
         self._audio_path = audio_path
 
     def run(self) -> None:
-        result = analyse_audio(self._audio_path)
+        result: AudioAnalysis | None = None
+        try:
+            result = analyse_audio(self._audio_path)
+        except Exception:
+            logger.exception("Analysis failed for %s", self._audio_path)
         self.finished.emit(result)
 
 
@@ -56,8 +60,13 @@ class TrimWorker(QThread):
         self._keep_regions = keep_regions
 
     def run(self) -> None:
-        success = trim_recording(self._recording_dir, self._keep_regions)
-        new_duration = compute_trimmed_duration(self._keep_regions)
+        success = False
+        new_duration = 0.0
+        try:
+            success = trim_recording(self._recording_dir, self._keep_regions)
+            new_duration = compute_trimmed_duration(self._keep_regions)
+        except Exception:
+            logger.exception("Trim failed for %s", self._recording_dir)
         self.finished.emit(success, new_duration)
 
 

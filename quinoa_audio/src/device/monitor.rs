@@ -1,17 +1,23 @@
+#[cfg(feature = "real-audio")]
 use pyo3::prelude::*;
+#[cfg(feature = "real-audio")]
 use std::sync::mpsc::{channel, Receiver, Sender};
+#[cfg(feature = "real-audio")]
 use std::sync::Mutex;
+#[cfg(feature = "real-audio")]
 use std::thread;
 
 #[cfg(feature = "real-audio")]
 use pipewire as pw;
 #[cfg(feature = "real-audio")]
-use pipewire::context::Context;
+use pipewire::context::ContextRc;
 #[cfg(feature = "real-audio")]
-use pipewire::main_loop::MainLoop;
+use pipewire::main_loop::MainLoopRc;
 
+#[cfg(feature = "real-audio")]
 use crate::{DeviceEvent, DeviceMonitor};
 
+#[cfg(feature = "real-audio")]
 pub fn start_monitoring() -> PyResult<DeviceMonitor> {
     let (event_tx, event_rx) = channel();
     let (stop_tx, stop_rx) = channel();
@@ -42,14 +48,14 @@ fn run_monitor_thread(event_tx: Sender<DeviceEvent>, stop_rx: Receiver<()>) -> R
     pw::init();
 
     let mainloop =
-        MainLoop::new(None).map_err(|e| format!("Failed to create main loop: {:?}", e))?;
-    let context =
-        Context::new(&mainloop).map_err(|e| format!("Failed to create context: {:?}", e))?;
+        MainLoopRc::new(None).map_err(|e| format!("Failed to create main loop: {:?}", e))?;
+    let context = ContextRc::new(&mainloop, None)
+        .map_err(|e| format!("Failed to create context: {:?}", e))?;
     let core = context
-        .connect(None)
+        .connect_rc(None)
         .map_err(|e| format!("Failed to connect to core: {:?}", e))?;
     let registry = core
-        .get_registry()
+        .get_registry_rc()
         .map_err(|e| format!("Failed to get registry: {:?}", e))?;
 
     let event_tx_clone = event_tx.clone();

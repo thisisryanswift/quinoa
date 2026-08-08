@@ -1,10 +1,11 @@
 """Main application window - 3-column layout."""
 
+import contextlib
 import logging
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from PyQt6.QtCore import Qt, QTimer
+from PyQt6.QtCore import Qt, QThread, QTimer
 from PyQt6.QtGui import QKeySequence, QShortcut
 from PyQt6.QtWidgets import QMainWindow, QMessageBox, QSplitter
 
@@ -39,6 +40,28 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger("quinoa")
 
+# Process-lifetime set for workers that could not be stopped before the main
+# window was closed.  They are held here (and deleted via their unconditional
+# ``done`` signal) instead of being destroyed while their QThread is still
+# running.  ``terminate()`` is never used.
+_PENDING_WORKERS: set[QThread] = set()
+
+
+def _stash_pending_worker(worker: QThread) -> None:
+    """Keep a timed-out worker alive until its ``done`` signal fires."""
+    _PENDING_WORKERS.add(worker)
+    done_signal = getattr(worker, "done", None)
+    if done_signal is not None:
+        with contextlib.suppress(Exception):
+            done_signal.connect(lambda w=worker: _release_pending_worker(w))
+
+
+def _release_pending_worker(worker: QThread) -> None:
+    """Remove a worker from the pending set and schedule deletion."""
+    with contextlib.suppress(KeyError):
+        _PENDING_WORKERS.remove(worker)
+    worker.deleteLater()
+
 
 class MainWindow(QMainWindow):
     """Main application window with 3-column layout."""
@@ -54,6 +77,9 @@ class MainWindow(QMainWindow):
         # Transcription Manager
         self.transcription_manager = TranscriptionManager(self.db, self)
         self.transcription_manager.job_finished.connect(self._on_transcription_finished)
+        # Always connect the sync queue handler.  It persists a pending sync
+        # state even when File Search initialization has not created a worker.
+        self.transcription_manager.job_finished.connect(self._queue_sync_after_transcription)
 
         # File Search components (initialized later if enabled)
         self._file_search: FileSearchManager | None = None
@@ -98,6 +124,7 @@ class MainWindow(QMainWindow):
         self.middle_panel.silence_detected.connect(self._on_silence_detected)
         self.middle_panel.metadata_changed.connect(self._on_meeting_metadata_changed)
         self.left_panel.meeting_renamed.connect(self.middle_panel.on_meeting_renamed)
+        self.left_panel.meeting_renamed.connect(self._on_meeting_renamed)
         self.splitter.addWidget(self.middle_panel)
 
         # Right panel - AI Chat
@@ -247,16 +274,6 @@ class MainWindow(QMainWindow):
             self._sync_worker.store_ready.connect(self._on_store_ready)
             self._sync_worker.sync_completed.connect(self._on_sync_completed)
             self._sync_worker.sync_failed.connect(self._on_sync_failed)
-
-            # Connect transcription completion to sync queue
-            delay_seconds = FILE_SEARCH_DELAY_MS // 1000
-            self.transcription_manager.job_finished.connect(
-                lambda rec_id, _: (
-                    self._sync_worker.queue_for_sync(rec_id, delay_seconds)
-                    if self._sync_worker
-                    else None
-                )
-            )
 
             # Start sync worker and queue existing unsynced recordings
             self._sync_worker.queue_all_unsynced()
@@ -610,21 +627,57 @@ class MainWindow(QMainWindow):
         self.left_panel.refresh()
 
     def _on_meeting_metadata_changed(self, rec_id: str):
-        """Handle meeting metadata changes (title, speakers)."""
-        # Trigger immediate sync (with short debounce delay)
-        if self._sync_worker:
-            self._sync_worker.queue_for_sync(rec_id, delay_seconds=10)
+        """Handle meeting metadata changes (title, speakers, notes)."""
+        self._mark_sync_dirty(rec_id)
 
         # Update chat context if this is the meeting being viewed
         viewing_id = self.middle_panel._viewing_rec_id or self.middle_panel.current_rec_id
         if rec_id == viewing_id:
             self._update_chat_context_for_recording(rec_id)
 
+    def _on_meeting_renamed(self, rec_id: str, new_title: str):
+        """Handle meeting rename from any source (tree, list, header)."""
+        # Non-viewed renames do not emit metadata_changed from the middle panel,
+        # so persist the dirty sync state here as well.
+        self._mark_sync_dirty(rec_id)
+
+        # Update chat context if this is the meeting being viewed
+        if rec_id == self.middle_panel._viewing_rec_id:
+            self._update_chat_context_for_recording(rec_id)
+
+    def _mark_sync_dirty(self, rec_id: str) -> None:
+        """Persist a pending sync state and queue if the sync worker is available."""
+        try:
+            self.db.set_sync_status(rec_id, "pending")
+        except Exception as e:
+            logger.warning("Failed to mark sync pending for %s: %s", rec_id, e)
+
+        if self._sync_worker:
+            self._sync_worker.queue_for_sync(rec_id, delay_seconds=10)
+
     def _on_transcription_finished(self, rec_id: str, json_str: str):
         """Handle transcription completion."""
         # Wake up compression worker to process the newly transcribed recording
         if self._compression_worker:
             self._compression_worker.wake()
+
+    def _queue_sync_after_transcription(self, rec_id: str, _json_str: str) -> None:
+        """Persist a pending sync state and queue the recording for File Search.
+
+        The pending state is written even when no SyncWorker exists (e.g. File
+        Search initialization failed) so the next startup backfill will sync it.
+        """
+        if not config.get("file_search_enabled", False):
+            return
+
+        try:
+            self.db.set_sync_status(rec_id, "pending")
+        except Exception as e:
+            logger.warning("Failed to mark sync pending for %s: %s", rec_id, e)
+
+        if self._sync_worker:
+            delay_seconds = FILE_SEARCH_DELAY_MS // 1000
+            self._sync_worker.queue_for_sync(rec_id, delay_seconds)
 
     def _save_window_state(self):
         """Save window state (splitter sizes, collapsed states) to config."""
@@ -652,12 +705,12 @@ class MainWindow(QMainWindow):
                 "Minimized to tray. Right-click icon to quit.",
             )
         else:
-            # Actually quit - save state and clean up
+            # Actually quit - save state and clean up all workers safely.
             self._save_window_state()
             # Stop sync worker
             if self._sync_worker:
                 self._sync_worker.stop()
-                self._sync_worker.wait(2000)  # Wait up to 2 seconds
+                self._sync_worker.wait(3000)
             # Stop transcription jobs
             if self.transcription_manager:
                 self.transcription_manager.cancel_all()
@@ -667,6 +720,16 @@ class MainWindow(QMainWindow):
             self._stop_notification_worker()
             # Stop compression worker
             self._stop_compression_worker()
+            # Stop any running UI workers (enhancement, chat).  If a worker
+            # does not finish in time, keep it in the process-lifetime pending
+            # set until its unconditional ``done`` signal cleans it up.
+            pending: QThread | None
+            finished, pending = self.middle_panel.cleanup()
+            if not finished and pending is not None:
+                _stash_pending_worker(pending)
+            finished, pending = self.right_panel.cleanup()
+            if not finished and pending is not None:
+                _stash_pending_worker(pending)
             # Stop device monitor
             self.middle_panel.stop_device_monitor()
             # Clean up D-Bus / tray

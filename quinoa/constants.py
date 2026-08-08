@@ -46,6 +46,11 @@ FILE_SEARCH_POLL_INTERVAL_MS = 60 * 1000  # Check every minute
 MIN_SYNC_DURATION_SECONDS = 30  # Skip recordings shorter than 30s
 CHAT_MAX_HISTORY = 50  # Max messages to retrieve
 
+# Gemini network timeouts (ms) to bound SDK calls and keep shutdown finite
+GEMINI_UPLOAD_TIMEOUT_MS = 300000  # 5 minutes for file uploads
+GEMINI_GENERATION_TIMEOUT_MS = 600000  # 10 minutes for generation/transcription
+GEMINI_STORE_TIMEOUT_MS = 120000  # 2 minutes for File Search store ops
+
 # Application Icon
 APP_ICON_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), "quinoa_icon.png")
 

@@ -2,6 +2,7 @@ import logging
 import os
 import re
 
+from google.genai.errors import APIError
 from PyQt6.QtCore import QThread, pyqtSignal
 from PyQt6.QtWidgets import (
     QCheckBox,
@@ -121,7 +122,7 @@ class _ModelFetchWorker(QThread):
             if filtered:
                 self.models_fetched.emit(filtered)
                 logger.debug("Fetched %d Gemini models from API", len(filtered))
-        except Exception as e:
+        except (ValueError, TypeError, APIError) as e:
             logger.debug("Failed to fetch model list from API: %s", e)
 
 
@@ -180,9 +181,9 @@ class SettingsDialog(QDialog):
         file_search_layout.addWidget(self.file_search_checkbox)
 
         file_search_info = QLabel(
-            "When enabled, your meeting transcripts and notes are synced to\n"
-            "Gemini File Search for AI-powered search. This allows you to ask\n"
-            "questions about your past meetings in the AI Assistant panel.\n\n"
+            "When enabled, your meeting transcripts and notes are uploaded to\n"
+            "Google Cloud (Gemini File Search) for AI-powered search. This allows\n"
+            "you to ask questions about your past meetings in the AI Assistant panel.\n\n"
             "Note: Requires app restart to take effect."
         )
         file_search_info.setStyleSheet("color: #888; font-size: 11px;")
@@ -310,7 +311,7 @@ class SettingsDialog(QDialog):
             with open(test_file, "w") as f:
                 f.write("test")
             os.remove(test_file)
-        except Exception as e:
+        except OSError as e:
             QMessageBox.warning(self, "Invalid Input", f"Output directory is not writable:\n{e}")
             return
 
@@ -405,7 +406,7 @@ class SettingsDialog(QDialog):
                         "Connection Failed",
                         "Failed to connect to Google Calendar.\nPlease try again.",
                     )
-            except Exception as e:
+            except (ValueError, RuntimeError, OSError) as e:
                 logger.error("Calendar connection failed: %s", e)
                 QMessageBox.critical(
                     self,

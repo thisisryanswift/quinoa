@@ -21,11 +21,11 @@ from PyQt6.QtWidgets import (
 )
 
 from quinoa.constants import CHAT_MAX_HISTORY, LAYOUT_MARGIN_SMALL
+from quinoa.search.chat_worker import ChatWorker
 from quinoa.ui.markdown_converter import markdown_to_html
 from quinoa.ui.styles import CHAT_BUBBLE_ASSISTANT, CHAT_BUBBLE_USER, CITATION_BUTTON
 
 if TYPE_CHECKING:
-    from quinoa.search.chat_worker import ChatWorker
     from quinoa.search.file_search import FileSearchManager
     from quinoa.storage.database import Database
 
@@ -338,17 +338,19 @@ class RightPanel(QWidget):
             self.db.save_chat_message(self._chat_session_id, "user", question)
 
         # Start chat worker
-        from quinoa.search.chat_worker import ChatWorker
-
         self._chat_worker = ChatWorker(
             self._file_search, question, self._chat_history, self._viewing_context
         )
         self._chat_worker.response_ready.connect(self._on_response)
         self._chat_worker.error.connect(self._on_error)
+        self._chat_worker.done.connect(
+            lambda worker=self._chat_worker: worker.deleteLater()
+        )
         self._chat_worker.start()
 
     def _on_response(self, response: str, citations: list[dict[str, Any]]) -> None:
         """Handle chat response."""
+        self._chat_worker = None
         # Add assistant message to UI
         self._add_message("assistant", response, citations)
 
@@ -367,9 +369,33 @@ class RightPanel(QWidget):
 
     def _on_error(self, error: str) -> None:
         """Handle chat error."""
+        self._chat_worker = None
         self._add_message("assistant", f"Error: {error}")
         self.chat_input.setEnabled(True)
         self.send_btn.setEnabled(True)
+
+    def cleanup(self, timeout_ms: int = 2000) -> tuple[bool, ChatWorker | None]:
+        """Stop any active chat worker during shutdown.
+
+        Returns ``(True, None)`` if the worker finished or was not running,
+        and ``(False, worker)`` if it is still running after the timeout.
+        A running QThread is never destroyed here; the caller is responsible
+        for keeping the returned worker alive until its ``done`` signal fires.
+        """
+        worker = self._chat_worker
+        if worker is None or not worker.isRunning():
+            self._chat_worker = None
+            return True, None
+
+        logger.debug("Waiting for chat worker to finish...")
+        worker.cancel()
+        if worker.wait(timeout_ms):
+            self._chat_worker = None
+            return True, None
+
+        logger.warning("Chat worker did not stop within timeout")
+        self._chat_worker = None
+        return False, worker
 
     def _add_message(
         self,

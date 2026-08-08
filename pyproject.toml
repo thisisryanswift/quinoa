@@ -20,6 +20,7 @@ dependencies = [
     "google-auth-httplib2>=0.1.0",
     "google-auth-oauthlib>=1.0.0",
     "platformdirs>=4.5.1",
+    "httpx>=0.28.1",
 ]
 
 [project.optional-dependencies]
@@ -72,11 +73,16 @@ ignore = [
 [tool.ruff.format]
 quote-style = "double"
 
+# Pytest - test discovery
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests/python"]
+
 # Mypy - static type checking
 [tool.mypy]
 python_version = "3.12"
+mypy_path = ["stubs"]
 warn_return_any = true
 warn_unused_ignores = true
-# Start lenient, tighten over time
 ignore_missing_imports = true
-check_untyped_defs = false
+check_untyped_defs = true

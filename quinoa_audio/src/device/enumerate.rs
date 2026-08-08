@@ -3,9 +3,9 @@ use crate::{Device, DeviceType};
 #[cfg(feature = "real-audio")]
 use pipewire as pw;
 #[cfg(feature = "real-audio")]
-use pipewire::context::Context;
+use pipewire::context::ContextRc;
 #[cfg(feature = "real-audio")]
-use pipewire::main_loop::MainLoop;
+use pipewire::main_loop::MainLoopRc;
 #[cfg(feature = "real-audio")]
 use serde::Deserialize;
 #[cfg(feature = "real-audio")]
@@ -35,18 +35,18 @@ pub fn list_devices_pw() -> Result<Vec<Device>, String> {
     pw::init();
 
     let mainloop =
-        MainLoop::new(None).map_err(|e| format!("Failed to create main loop: {:?}", e))?;
-    let context =
-        Context::new(&mainloop).map_err(|e| format!("Failed to create context: {:?}", e))?;
+        MainLoopRc::new(None).map_err(|e| format!("Failed to create main loop: {:?}", e))?;
+    let context = ContextRc::new(&mainloop, None)
+        .map_err(|e| format!("Failed to create context: {:?}", e))?;
     let core = context
-        .connect(None)
+        .connect_rc(None)
         .map_err(|e| format!("Failed to connect to core: {:?}", e))?;
     let registry = core
-        .get_registry()
+        .get_registry_rc()
         .map_err(|e| format!("Failed to get registry: {:?}", e))?;
     // Get a second registry proxy to use inside the listener to avoid borrow conflicts
     let registry_binding = core
-        .get_registry()
+        .get_registry_rc()
         .map_err(|e| format!("Failed to get registry binding: {:?}", e))?;
 
     let devices = Arc::new(Mutex::new(Vec::new()));

@@ -48,7 +48,7 @@ class Database:
         try:
             yield conn
             conn.commit()
-        except Exception:
+        except Exception:  # Broad catch so any error inside the with-block triggers rollback
             conn.rollback()
             raise
 
@@ -365,9 +365,14 @@ class Database:
         """Save transcript with optional utterances JSON."""
         with self._conn() as conn:
             conn.execute(
-                """INSERT OR REPLACE INTO transcripts
+                """INSERT INTO transcripts
                    (recording_id, text, summary, utterances, created_at)
-                   VALUES (?, ?, ?, ?, ?)""",
+                   VALUES (?, ?, ?, ?, ?)
+                   ON CONFLICT(recording_id) DO UPDATE SET
+                     text=excluded.text,
+                     summary=excluded.summary,
+                     utterances=excluded.utterances,
+                     created_at=excluded.created_at""",
                 (rec_id, text, summary, utterances, datetime.now()),
             )
 
@@ -408,34 +413,44 @@ class Database:
         if not query or not query.strip():
             return []
 
+        # Treat the entire query as a literal FTS5 phrase and escape embedded quotes.
         clean_query = query.replace('"', '""')
         fts_query = f'"{clean_query}"'
-        like_query = f"%{query}%"
 
-        logger.info(f"Searching transcripts for: '{query}' (FTS: '{fts_query}')")
+        # Escape LIKE wildcards in the query so user-supplied %/_ are literal.
+        like_escaped = (
+            query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        )
+        like_query = f"%{like_escaped}%"
+
+        logger.debug("Searching transcripts (query length %d)", len(query))
 
         with self._conn() as conn:
             conn.row_factory = sqlite3.Row
 
-            # FTS Search
-            cursor = conn.execute(
-                """
-                SELECT
-                    fts.recording_id,
-                    snippet(transcripts_fts, 1, '<b>', '</b>', '...', 32) as text_snippet,
-                    r.title,
-                    r.started_at,
-                    r.duration_seconds
-                FROM transcripts_fts fts
-                JOIN recordings r ON fts.recording_id = r.id
-                WHERE transcripts_fts MATCH ?
-                ORDER BY rank
-                LIMIT 50
-                """,
-                (fts_query,),
-            )
-            results = {row["recording_id"]: dict(row) for row in cursor.fetchall()}
-            logger.info(f"FTS found {len(results)} matches")
+            # FTS Search — malformed user input can cause FTS5 syntax errors.
+            results: dict[str, dict[str, Any]] = {}
+            try:
+                cursor = conn.execute(
+                    """
+                    SELECT
+                        fts.recording_id,
+                        snippet(transcripts_fts, 1, '\ue000BEG\ue000', '\ue000END\ue000', '...', 32) as text_snippet,
+                        r.title,
+                        r.started_at,
+                        r.duration_seconds
+                    FROM transcripts_fts fts
+                    JOIN recordings r ON fts.recording_id = r.id
+                    WHERE transcripts_fts MATCH ?
+                    ORDER BY rank
+                    LIMIT 50
+                    """,
+                    (fts_query,),
+                )
+                results = {row["recording_id"]: dict(row) for row in cursor.fetchall()}
+                logger.info("FTS found %d matches", len(results))
+            except sqlite3.OperationalError as e:
+                logger.warning("FTS query failed, falling back to title search: %s", e)
 
             # Title Search
             cursor = conn.execute(
@@ -446,7 +461,7 @@ class Database:
                     r.started_at,
                     r.duration_seconds
                 FROM recordings r
-                WHERE r.title LIKE ?
+                WHERE r.title LIKE ? ESCAPE '\\'
                 ORDER BY r.started_at DESC
                 LIMIT 50
                 """,
@@ -462,7 +477,7 @@ class Database:
                     results[rec_id] = data
                     title_matches += 1
 
-            logger.info(f"Title search added {title_matches} unique matches")
+            logger.info("Title search added %d unique matches", title_matches)
 
             # Convert to list and sort
             final_list = list(results.values())
@@ -578,7 +593,23 @@ class Database:
 
             conn.execute("DELETE FROM action_items WHERE recording_id = ?", (rec_id,))
             conn.execute("DELETE FROM transcripts WHERE recording_id = ?", (rec_id,))
-            conn.execute("DELETE FROM file_search_sync WHERE recording_id = ?", (rec_id,))
+
+            # If a File Search document was synced, keep the sync row with a
+            # 'deleted' status so the background worker can remove it from the
+            # cloud. Otherwise, clean up the stale sync row entirely.
+            cursor = conn.execute(
+                "SELECT file_search_file_name FROM file_search_sync WHERE recording_id = ?",
+                (rec_id,),
+            )
+            row = cursor.fetchone()
+            if row and row[0]:
+                conn.execute(
+                    "UPDATE file_search_sync SET sync_status = 'deleted' WHERE recording_id = ?",
+                    (rec_id,),
+                )
+            else:
+                conn.execute("DELETE FROM file_search_sync WHERE recording_id = ?", (rec_id,))
+
             conn.execute("DELETE FROM recordings WHERE id = ?", (rec_id,))
 
     # ==================== File Search Sync Methods ====================
@@ -635,9 +666,12 @@ class Database:
                 SELECT r.* FROM recordings r
                 INNER JOIN transcripts t ON r.id = t.recording_id
                 LEFT JOIN file_search_sync s ON r.id = s.recording_id
-                WHERE r.status = 'completed'
+                WHERE r.status IN ('completed', 'transcribed')
                   AND r.duration_seconds >= ?
-                  AND (s.sync_status IS NULL OR s.sync_status NOT IN ('synced', 'pending'))
+                  AND (
+                      s.sync_status IS NULL
+                      OR s.sync_status NOT IN ('synced', 'deleted', 'removed')
+                  )
                 ORDER BY r.started_at DESC
                 """,
                 (min_duration_seconds,),

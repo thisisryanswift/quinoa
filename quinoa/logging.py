@@ -16,6 +16,10 @@ def setup_logging(verbose: bool = False) -> None:
     """
     level = logging.DEBUG if verbose else logging.INFO
 
+    # Clear existing handlers to avoid duplicates on repeated calls
+    for handler in list(logger.handlers):
+        logger.removeHandler(handler)
+
     # Console handler
     console_handler = logging.StreamHandler(sys.stderr)
     console_handler.setLevel(level)
@@ -26,7 +30,7 @@ def setup_logging(verbose: bool = False) -> None:
     log_dir = Path.home() / ".local" / "share" / "quinoa"
     if log_dir.exists():
         file_handler = logging.FileHandler(log_dir / "quinoa.log")
-        file_handler.setLevel(logging.DEBUG)
+        file_handler.setLevel(level)
         file_format = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
         file_handler.setFormatter(file_format)
         logger.addHandler(file_handler)

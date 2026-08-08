@@ -290,6 +290,7 @@ class MiddlePanel(QWidget):
         if self.transcription_manager:
             self.transcription_manager.job_started.connect(self._on_transcription_job_started)
             self.transcription_manager.job_finished.connect(self._on_transcription_job_finished)
+            self.transcription_manager.job_partial.connect(self._on_transcription_job_partial)
             self.transcription_manager.job_failed.connect(self._on_transcription_job_error)
 
         # Enhancement worker
@@ -1638,14 +1639,14 @@ class MiddlePanel(QWidget):
             self.current_session_dir = os.path.join(base_dir, self.current_rec_id)
             os.makedirs(self.current_session_dir, exist_ok=True)
 
-            config_obj = quinoa_audio.RecordingConfig(  # type: ignore[attr-defined]
+            config_obj = quinoa_audio.RecordingConfig(
                 output_dir=self.current_session_dir,
                 mic_device_id=mic_id,
                 system_audio=self.sys_audio_check.isChecked(),
                 sample_rate=DEFAULT_SAMPLE_RATE,
             )
 
-            self.recording_session = quinoa_audio.start_recording(config_obj)  # type: ignore[attr-defined]
+            self.recording_session = quinoa_audio.start_recording(config_obj)
             self.recording_start_time = time.time()
             self.recording_paused_time = 0
             self.is_paused = False
@@ -1721,24 +1722,37 @@ class MiddlePanel(QWidget):
         if not self.recording_session:
             return
 
+        rec_id = self.current_rec_id
+        stop_error: Exception | None = None
         try:
             self.recording_session.stop()
         except Exception as e:
-            logger.error("Error stopping session: %s", e)
+            stop_error = e
+            logger.error("Error stopping session for %s: %s", rec_id, e)
 
-        # Save notes before stopping
+        # Save notes while the recording is still the active context
         self._save_notes()
 
-        # Update DB
+        # Best-effort duration, even if stop/finalize failed
         duration = time.time() - self.recording_start_time - self.recording_paused_time
-        self.db.update_recording_status(
-            self.current_rec_id,
-            "completed",
-            duration=duration,
-            ended_at=datetime.now(),
-        )
 
-        rec_id = self.current_rec_id
+        # Update DB based on whether the stop succeeded
+        if stop_error is None:
+            self.db.update_recording_status(
+                rec_id,
+                "completed",
+                duration=duration,
+                ended_at=datetime.now(),
+            )
+        else:
+            self.db.update_recording_status(
+                rec_id,
+                "failed",
+                duration=duration,
+                ended_at=datetime.now(),
+            )
+
+        # Reset recording state safely
         self.recording_session = None
         self._mode = PanelMode.IDLE
 
@@ -1760,16 +1774,26 @@ class MiddlePanel(QWidget):
         self.pause_btn.setEnabled(False)
         self.pause_btn.setText("Pause")
         self.is_paused = False
-        self.status_label.setText("Recording saved")
 
-        # Emit signals
+        if stop_error is None:
+            self.status_label.setText("Recording saved")
+        else:
+            self.status_label.setText("Recording failed")
+            if self.isVisible():
+                QMessageBox.critical(
+                    self,
+                    "Recording Error",
+                    f"Failed to save recording: {stop_error}",
+                )
+
+        # Emit signals to reset tray/history state
         self.recording_stopped.emit(rec_id)
         self.recording_state_changed.emit(False)
         if self.on_history_changed:
             self.on_history_changed()
 
-        # Auto-transcribe if enabled
-        if config.get("auto_transcribe", True) and config.get("api_key"):
+        # Auto-transcribe only on a clean stop
+        if stop_error is None and config.get("auto_transcribe", True) and config.get("api_key"):
             logger.info("Auto-transcribe: starting transcription for %s", rec_id)
             # Short delay to let UI settle before starting transcription.
             # Use instance timer so it can be cancelled if the app closes first.
@@ -1904,6 +1928,8 @@ class MiddlePanel(QWidget):
 
     def _poll_recording_events(self):
         """Poll and handle recording events."""
+        if self.recording_session is None:
+            return
         try:
             events = self.recording_session.poll_events()
             for event in events:
@@ -2039,6 +2065,8 @@ class MiddlePanel(QWidget):
             return
 
         # Determine which recording to transcribe
+        session_dir: str | None = None
+        rec_id: str | None = None
         if self._mode == PanelMode.VIEWING and self._viewing_rec_id:
             rec = self.db.get_recording(self._viewing_rec_id)
             if not rec:
@@ -2046,10 +2074,11 @@ class MiddlePanel(QWidget):
                 return
             session_dir = os.path.dirname(rec["mic_path"])
             rec_id = self._viewing_rec_id
-        elif self.current_session_dir:
+        elif self.current_session_dir is not None and self.current_rec_id is not None:
             session_dir = self.current_session_dir
             rec_id = self.current_rec_id
-        else:
+
+        if not session_dir or not rec_id:
             return
 
         if not os.path.exists(session_dir):
@@ -2108,6 +2137,34 @@ class MiddlePanel(QWidget):
             self.transcript_viewer.set_markdown(display_text)
             self.content_stack.setCurrentIndex(1)
 
+    def _on_transcription_job_partial(self, rec_id: str, json_str: str):
+        """Handle a partial/truncated transcription recovery."""
+        # Refresh left panel via signal
+        if self.on_history_changed:
+            self.on_history_changed()
+
+        # Only update content if we're viewing this recording
+        if rec_id != self._viewing_rec_id:
+            return
+
+        self.status_label.setText("Partial Transcription")
+        self.transcribe_btn.setEnabled(True)
+        self.transcribe_btn.setText("Re-transcribe")
+
+        result = parse_transcription_result(json_str)
+        utterances = result.get("utterances", [])
+        display_text = format_transcript_display(result["transcript"], result.get("summary", ""))
+
+        self._cached_utterances = utterances
+        self._cached_transcript = display_text
+
+        if utterances:
+            self.diarized_transcript_view.set_utterances(utterances, {})
+            self.content_stack.setCurrentIndex(2)  # Diarized view
+        else:
+            self.transcript_viewer.set_markdown(display_text)
+            self.content_stack.setCurrentIndex(1)
+
     def _on_transcription_job_error(self, rec_id: str, error_msg: str):
         """Handle transcription error."""
         if rec_id == self._viewing_rec_id or (
@@ -2117,6 +2174,29 @@ class MiddlePanel(QWidget):
             self.transcribe_btn.setEnabled(True)
             self.transcribe_btn.setText("Transcribe")
             QMessageBox.warning(self, "Transcription Error", error_msg)
+
+    def cleanup(self, timeout_ms: int = 2000) -> tuple[bool, EnhanceWorker | None]:
+        """Stop any running enhancement worker during shutdown.
+
+        Returns ``(True, None)`` if the worker finished or was not running,
+        and ``(False, worker)`` if it is still running after the timeout.
+        A running QThread is never destroyed here; the caller is responsible
+        for keeping the returned worker alive until its ``done`` signal fires.
+        """
+        worker = self._enhance_worker
+        if worker is None or not worker.isRunning():
+            self._enhance_worker = None
+            return True, None
+
+        logger.debug("Waiting for enhancement worker to finish...")
+        worker.cancel()
+        if worker.wait(timeout_ms):
+            self._enhance_worker = None
+            return True, None
+
+        logger.warning("Enhancement worker did not stop within timeout")
+        self._enhance_worker = None
+        return False, worker
 
     def _start_enhancement(self):
         """Start AI enhancement of notes."""
@@ -2152,12 +2232,16 @@ class MiddlePanel(QWidget):
                 transcript_text = transcript_text[idx + len(transcript_marker) :]
 
         self._enhance_worker = EnhanceWorker(self._cached_notes, transcript_text, summary)
-        self._enhance_worker.finished.connect(self._on_enhancement_finished)
+        self._enhance_worker.notes_ready.connect(self._on_enhancement_finished)
         self._enhance_worker.error.connect(self._on_enhancement_error)
+        self._enhance_worker.done.connect(
+            lambda worker=self._enhance_worker: worker.deleteLater()
+        )
         self._enhance_worker.start()
 
     def _on_enhancement_finished(self, enhanced_notes: str):
         """Handle enhancement completion."""
+        self._enhance_worker = None
         self.status_label.setText("Enhancement Complete")
         self.enhance_notes_btn.setEnabled(True)
         self.enhance_notes_btn.setText("Regenerate Enhanced Notes")
@@ -2175,6 +2259,7 @@ class MiddlePanel(QWidget):
 
     def _on_enhancement_error(self, error_msg: str):
         """Handle enhancement error."""
+        self._enhance_worker = None
         self.status_label.setText("Enhancement Failed")
         self.enhance_notes_btn.setEnabled(True)
         self.enhance_notes_btn.setText("Generate Enhanced Notes")

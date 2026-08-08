@@ -3,10 +3,11 @@
 
 set -e
 
-PROJECT_ROOT="/home/rswift/dev/quinoa"
-BIN_DEST="/home/rswift/.local/bin/quinoa"
-DESKTOP_DEST="/home/rswift/.local/share/applications/quinoa.desktop"
-ICON_DEST="/home/rswift/.local/share/icons/hicolor/scalable/apps/quinoa.png"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
+BIN_DEST="${HOME}/.local/bin/quinoa"
+DESKTOP_DEST="${HOME}/.local/share/applications/quinoa.desktop"
+ICON_DEST="${HOME}/.local/share/icons/hicolor/scalable/apps/quinoa.png"
 
 echo "📦 Bundling Quinoa local release..."
 

@@ -6,6 +6,10 @@ resolution-markers = [
     "python_full_version < '3.13'",
 ]
 
+[options]
+exclude-newer = "0001-01-01T00:00:00Z" # This has no effect and is included for backwards compatibility when using relative exclude-newer values.
+exclude-newer-span = "P7D"
+
 [[package]]
 name = "annotated-types"
 version = "0.7.0"
@@ -879,6 +883,7 @@ dependencies = [
     { name = "google-auth-httplib2" },
     { name = "google-auth-oauthlib" },
     { name = "google-genai" },
+    { name = "httpx" },
     { name = "jeepney", marker = "sys_platform == 'linux'" },
     { name = "keyring" },
     { name = "markdown" },
@@ -912,6 +917,7 @@ requires-dist = [
     { name = "google-auth-httplib2", specifier = ">=0.1.0" },
     { name = "google-auth-oauthlib", specifier = ">=1.0.0" },
     { name = "google-genai", specifier = ">=0.3.0" },
+    { name = "httpx", specifier = ">=0.28.1" },
     { name = "jeepney", marker = "sys_platform == 'linux'", specifier = ">=0.8.0" },
     { name = "keyring", specifier = ">=24.0.0" },
     { name = "markdown", specifier = ">=3.5.0" },

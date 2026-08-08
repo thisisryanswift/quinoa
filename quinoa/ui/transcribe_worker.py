@@ -2,13 +2,15 @@
 
 import logging
 import os
-import subprocess
+import threading
 
+import httpx
+from google.genai import errors
 from PyQt6.QtCore import QMutex, QThread, pyqtSignal
 
-from quinoa.audio.mixer import MIX_FILTER_COMPLEX
+from quinoa.audio.mixer import MixCancelledError, create_stereo_mix
 from quinoa.config import config
-from quinoa.transcription.gemini import DEFAULT_TRANSCRIPTION_PROMPT, GeminiTranscriber
+from quinoa.transcription.gemini import GeminiTranscriber
 
 logger = logging.getLogger("quinoa")
 
@@ -16,8 +18,12 @@ logger = logging.getLogger("quinoa")
 class TranscribeWorker(QThread):
     """Background thread for audio transcription."""
 
-    finished = pyqtSignal(str)
+    # ``transcript_ready`` and ``error`` carry the job outcome.  ``done`` is
+    # emitted unconditionally from ``finally`` so managers can safely wait for
+    # terminal cleanup without shadowing ``QThread.finished``.
+    transcript_ready = pyqtSignal(str)
     error = pyqtSignal(str)
+    done = pyqtSignal()
 
     def __init__(
         self,
@@ -33,23 +39,19 @@ class TranscribeWorker(QThread):
         self.attendees = attendees or []
         self._is_cancelled = False
         self._mutex = QMutex()
-        self._process: subprocess.Popen | None = None
+        self._cancel_event = threading.Event()
 
     def cancel(self):
         """Cooperatively cancel the worker."""
         self._mutex.lock()
         self._is_cancelled = True
-        if self._process:
-            try:
-                self._process.kill()
-                logger.info("Killed ffmpeg process for %s", self.rec_id)
-            except Exception:
-                pass
+        self._cancel_event.set()
+        self.requestInterruption()
         self._mutex.unlock()
 
     def run(self):
         try:
-            if self._is_cancelled:
+            if self._is_cancelled or self.isInterruptionRequested():
                 return
 
             mic_path = os.path.join(self.output_dir, "microphone.wav")
@@ -59,46 +61,22 @@ class TranscribeWorker(QThread):
             # 1. Mix audio if stereo doesn't already exist
             if not os.path.exists(stereo_path):
                 if os.path.exists(sys_path):
-                    if self._is_cancelled:
+                    if self._is_cancelled or self.isInterruptionRequested():
                         return
                     logger.debug("Mixing audio for transcription: %s", self.rec_id)
 
-                    cmd = [
-                        "ffmpeg",
-                        "-y",
-                        "-i",
-                        mic_path,
-                        "-i",
-                        sys_path,
-                        "-filter_complex",
-                        MIX_FILTER_COMPLEX,
-                        "-map",
-                        "[a]",
-                        stereo_path,
-                    ]
-
-                    self._mutex.lock()
-                    if self._is_cancelled:
-                        self._mutex.unlock()
+                    try:
+                        create_stereo_mix(
+                            mic_path,
+                            sys_path,
+                            stereo_path,
+                            cancellation_event=self._cancel_event,
+                        )
+                    except MixCancelledError:
+                        logger.info("Stereo mix cancelled for %s", self.rec_id)
                         return
-                    self._process = subprocess.Popen(
-                        cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE
-                    )
-                    self._mutex.unlock()
 
-                    _, stderr = self._process.communicate()
-
-                    self._mutex.lock()
-                    returncode = self._process.returncode if self._process else -1
-
-                    self._process = None
-                    if self._is_cancelled:
-                        self._mutex.unlock()
-                        return
-                    self._mutex.unlock()
-
-                    if returncode != 0:
-                        self.error.emit(f"Mixing failed: {stderr.decode()}")
+                    if self._is_cancelled or self.isInterruptionRequested():
                         return
 
                     upload_path = stereo_path
@@ -110,7 +88,7 @@ class TranscribeWorker(QThread):
             else:
                 upload_path = stereo_path
 
-            if self._is_cancelled:
+            if self._is_cancelled or self.isInterruptionRequested():
                 return
 
             # 2. Transcribe
@@ -118,38 +96,29 @@ class TranscribeWorker(QThread):
             api_key = config.get("api_key")
             transcriber = GeminiTranscriber(api_key=api_key)
 
-            # Build customized prompt with meeting metadata hints
-            # Note: We perform basic sanitization on externally sourced metadata
-            # to prevent prompt injection, although risk is mitigated by structured output.
-            prompt = None
-            if self.title or self.attendees:
-                context_hints = []
-                if self.title:
-                    # Strip newlines and truncate to avoid massive injection
-                    safe_title = self.title.replace("\n", " ").strip()[:200]
-                    context_hints.append(f"Meeting Title: {safe_title}")
-                if self.attendees:
-                    # Sanitize and truncate attendee list
-                    safe_attendees = [a.replace("\n", " ").strip()[:100] for a in self.attendees]
-                    context_hints.append(f"Known Participants: {', '.join(safe_attendees[:50])}")
+            # The transcribe call is network bound and blocks, but it is bounded
+            # by HttpOptions timeouts and checks the cancellation event.
+            transcript = transcriber.transcribe(
+                upload_path,
+                title=self.title,
+                attendees=self.attendees,
+                cancellation_event=self._cancel_event,
+            )
 
-                hint_text = "\n".join(context_hints)
-                prompt = f"Context for this meeting:\n{hint_text}\n\n{DEFAULT_TRANSCRIPTION_PROMPT}"
-                logger.debug("Using customized prompt with metadata hints for %s", self.rec_id)
-
-            # The transcribe call is network bound and blocks.
-            transcript = transcriber.transcribe(upload_path, prompt=prompt)
-
-            if self._is_cancelled:
+            if self._is_cancelled or self.isInterruptionRequested():
                 return
 
-            self.finished.emit(transcript)
+            self.transcript_ready.emit(transcript)
 
+        except (errors.APIError, httpx.HTTPError) as e:
+            if not self._is_cancelled:
+                logger.exception("TranscribeWorker API/network error for %s", self.rec_id)
+                self.error.emit(str(e))
         except Exception as e:
             if not self._is_cancelled:
                 logger.exception("TranscribeWorker error for %s", self.rec_id)
                 self.error.emit(str(e))
         finally:
-            self._mutex.lock()
-            self._process = None
-            self._mutex.unlock()
+            # Always emit a terminal signal so the manager can delete the
+            # worker once it truly stops, even after a cancel timeout.
+            self.done.emit()

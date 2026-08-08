@@ -9,7 +9,7 @@ import shutil
 import struct
 import subprocess
 import wave
-from collections.abc import Sequence
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -96,6 +96,7 @@ def _decode_flac_to_wav(flac_path: Path, wav_path: Path) -> bool:
             ["ffmpeg", "-y", "-i", str(flac_path), "-c:a", "pcm_s16le", str(wav_path)],
             capture_output=True,
             text=True,
+            errors="replace",
             timeout=120,
         )
         if result.returncode != 0:
@@ -105,9 +106,34 @@ def _decode_flac_to_wav(flac_path: Path, wav_path: Path) -> bool:
     except subprocess.TimeoutExpired:
         logger.error("ffmpeg timed out decoding %s", flac_path)
         return False
-    except Exception as e:
+    except (OSError, subprocess.SubprocessError, UnicodeDecodeError) as e:
         logger.error("Failed to decode FLAC: %s", e)
         return False
+
+
+def _count_wav_frames(wf: wave.Wave_read, bytes_per_frame: int, chunk_frames: int) -> int:
+    """Stream through an open WAV file and count the readable frames."""
+    count = 0
+    while True:
+        raw = wf.readframes(chunk_frames)
+        if not raw:
+            break
+        frame_bytes = len(raw) - (len(raw) % bytes_per_frame)
+        count += frame_bytes // bytes_per_frame
+    return count
+
+
+def _iter_samples(raw: bytes, sample_width: int, frame_bytes: int) -> Iterator[int]:
+    """Yield signed PCM samples from a raw little-endian byte buffer."""
+    if sample_width == 2:
+        return (v[0] for v in struct.iter_unpack("<h", raw[:frame_bytes]))
+    if sample_width == 4:
+        return (v[0] for v in struct.iter_unpack("<i", raw[:frame_bytes]))
+    # 24-bit: unpack manually
+    return (
+        int.from_bytes(raw[i : i + 3], "little", signed=True)
+        for i in range(0, frame_bytes, 3)
+    )
 
 
 def _analyse_wav(
@@ -116,127 +142,148 @@ def _analyse_wav(
     silence_threshold: float,
     silence_min_seconds: float,
 ) -> AudioAnalysis | None:
-    """Analyse a WAV file for waveform and silence."""
+    """Analyse a WAV file for waveform and silence by streaming frames."""
     try:
         with wave.open(str(wav_path), "rb") as wf:
             n_channels = wf.getnchannels()
             sample_rate = wf.getframerate()
-            n_frames = wf.getnframes()
+            header_n_frames = wf.getnframes()
             sample_width = wf.getsampwidth()
-
-            if n_frames == 0:
-                return AudioAnalysis(
-                    duration_seconds=0.0,
-                    sample_rate=sample_rate,
-                    n_channels=n_channels,
-                    samples_per_channel=0,
-                )
-
-            duration = n_frames / sample_rate
-
-            # Read all frames
-            raw = wf.readframes(n_frames)
-    except wave.Error as e:
-        logger.error("Failed to read WAV file %s: %s", wav_path, e)
+    except (OSError, EOFError, wave.Error, struct.error, ValueError) as e:
+        logger.error("Failed to open WAV file %s: %s", wav_path, e)
         return None
 
-    # Unpack samples (support 16-bit and 24-bit)
-    samples: Sequence[int]
+    if sample_rate <= 0 or n_channels <= 0 or sample_width <= 0:
+        logger.error("Invalid WAV metadata in %s", wav_path)
+        return None
+
     if sample_width == 2:
-        fmt = f"<{n_frames * n_channels}h"
-        samples = struct.unpack(fmt, raw)
         max_val = 32767.0
     elif sample_width == 3:
-        # 24-bit: unpack manually
-        unpacked: list[int] = []
-        for i in range(0, len(raw), 3):
-            val = int.from_bytes(raw[i : i + 3], byteorder="little", signed=True)
-            unpacked.append(val)
-        samples = unpacked
         max_val = 8388607.0
     elif sample_width == 4:
-        fmt = f"<{n_frames * n_channels}i"
-        samples = struct.unpack(fmt, raw)
         max_val = 2147483647.0
     else:
         logger.error("Unsupported sample width: %d", sample_width)
         return None
 
-    # Mix down to mono by taking max absolute amplitude across channels per frame
-    if n_channels > 1:
-        mono: list[float] = []
-        for i in range(0, len(samples), n_channels):
-            frame_samples = samples[i : i + n_channels]
-            mono.append(max(abs(s) for s in frame_samples) / max_val)
-        amplitudes = mono
-    else:
-        amplitudes = [abs(s) / max_val for s in samples]
+    if n_bins <= 0:
+        logger.error("n_bins must be positive, got %d", n_bins)
+        return None
 
-    # Build waveform bins (peak amplitude per bin)
-    frames_per_bin = max(1, len(amplitudes) // n_bins)
-    waveform: list[float] = []
-    for i in range(0, len(amplitudes), frames_per_bin):
-        chunk = amplitudes[i : i + frames_per_bin]
-        waveform.append(max(chunk) if chunk else 0.0)
+    if header_n_frames == 0:
+        return AudioAnalysis(
+            duration_seconds=0.0,
+            sample_rate=sample_rate,
+            n_channels=n_channels,
+            samples_per_channel=0,
+        )
 
-    # Trim to requested bin count (last bin may be partial)
-    waveform = waveform[:n_bins]
+    bytes_per_frame = sample_width * n_channels
+    chunk_frames = max(1, sample_rate * 5)
 
-    # Detect silent regions from the amplitude data
-    silent_regions = _detect_silence(
-        amplitudes, sample_rate, silence_threshold, silence_min_seconds
-    )
+    # First pass: count the frames that are actually readable. This stays
+    # memory-bounded because we read and discard chunks, and it lets us place
+    # bins correctly when the header over-declares frames (truncated files).
+    try:
+        with wave.open(str(wav_path), "rb") as wf:
+            actual_n_frames = _count_wav_frames(wf, bytes_per_frame, chunk_frames)
+    except (OSError, EOFError, wave.Error, struct.error, ValueError) as e:
+        logger.error("Failed to read WAV frames from %s: %s", wav_path, e)
+        return None
 
-    return AudioAnalysis(
-        duration_seconds=duration,
-        sample_rate=sample_rate,
-        n_channels=n_channels,
-        samples_per_channel=n_frames,
-        waveform=waveform,
-        silent_regions=silent_regions,
-    )
+    if actual_n_frames == 0:
+        return AudioAnalysis(
+            duration_seconds=0.0,
+            sample_rate=sample_rate,
+            n_channels=n_channels,
+            samples_per_channel=0,
+        )
 
+    if header_n_frames != actual_n_frames:
+        logger.warning(
+            "WAV header declared %d frames but only %d were readable in %s",
+            header_n_frames,
+            actual_n_frames,
+            wav_path,
+        )
 
-def _detect_silence(
-    amplitudes: list[float],
-    sample_rate: int,
-    threshold: float,
-    min_duration_seconds: float,
-) -> list[SilentRegion]:
-    """Detect silent regions in amplitude data."""
-    regions: list[SilentRegion] = []
+    # For short files we return one bin per frame so the waveform is not padded
+    # with trailing zero bins. For longer files we distribute frames evenly
+    # across the requested number of bins.
+    output_bins = min(n_bins, actual_n_frames)
+    bin_peaks = [0.0] * output_bins
+    silent_regions: list[SilentRegion] = []
     silence_start: int | None = None
 
-    for i, amp in enumerate(amplitudes):
-        if amp < threshold:
-            if silence_start is None:
-                silence_start = i
-        else:
+    # Second pass: compute bin peaks and detect silent regions.
+    try:
+        with wave.open(str(wav_path), "rb") as wf:
+            frame_index = 0
+            while True:
+                raw = wf.readframes(chunk_frames)
+                if not raw:
+                    break
+
+                frame_bytes = len(raw) - (len(raw) % bytes_per_frame)
+                n_frames_in_chunk = frame_bytes // bytes_per_frame
+                sample_iter = _iter_samples(raw, sample_width, frame_bytes)
+
+                for _ in range(n_frames_in_chunk):
+                    frame_peak = 0
+                    for _ in range(n_channels):
+                        sample = abs(next(sample_iter))
+                        if sample > frame_peak:
+                            frame_peak = sample
+                    amp = frame_peak / max_val
+
+                    if output_bins > 0:
+                        bin_index = min(
+                            output_bins - 1,
+                            frame_index * output_bins // actual_n_frames,
+                        )
+                        if amp > bin_peaks[bin_index]:
+                            bin_peaks[bin_index] = amp
+
+                    if amp < silence_threshold:
+                        if silence_start is None:
+                            silence_start = frame_index
+                    else:
+                        if silence_start is not None:
+                            silent_duration = (frame_index - silence_start) / sample_rate
+                            if silent_duration >= silence_min_seconds:
+                                silent_regions.append(
+                                    SilentRegion(
+                                        silence_start / sample_rate,
+                                        frame_index / sample_rate,
+                                    )
+                                )
+                            silence_start = None
+
+                    frame_index += 1
+
             if silence_start is not None:
-                duration_samples = i - silence_start
-                duration_seconds = duration_samples / sample_rate
-                if duration_seconds >= min_duration_seconds:
-                    regions.append(
+                silent_duration = (frame_index - silence_start) / sample_rate
+                if silent_duration >= silence_min_seconds:
+                    silent_regions.append(
                         SilentRegion(
-                            start_seconds=silence_start / sample_rate,
-                            end_seconds=i / sample_rate,
+                            silence_start / sample_rate,
+                            frame_index / sample_rate,
                         )
                     )
-                silence_start = None
 
-    # Handle silence extending to end of file
-    if silence_start is not None:
-        duration_samples = len(amplitudes) - silence_start
-        duration_seconds = duration_samples / sample_rate
-        if duration_seconds >= min_duration_seconds:
-            regions.append(
-                SilentRegion(
-                    start_seconds=silence_start / sample_rate,
-                    end_seconds=len(amplitudes) / sample_rate,
-                )
+            actual_duration = actual_n_frames / sample_rate
+            return AudioAnalysis(
+                duration_seconds=actual_duration,
+                sample_rate=sample_rate,
+                n_channels=n_channels,
+                samples_per_channel=actual_n_frames,
+                waveform=bin_peaks,
+                silent_regions=silent_regions,
             )
-
-    return regions
+    except (OSError, EOFError, wave.Error, struct.error, ValueError) as e:
+        logger.error("Failed to analyse WAV %s: %s", wav_path, e)
+        return None
 
 
 @dataclass
@@ -297,12 +344,18 @@ def trim_audio_file(
             str(output_path),
         ]
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                errors="replace",
+                timeout=300,
+            )
             if result.returncode != 0:
                 logger.error("ffmpeg trim failed: %s", result.stderr)
                 return False
             return output_path.exists()
-        except (subprocess.TimeoutExpired, Exception) as e:
+        except (subprocess.TimeoutExpired, OSError, subprocess.SubprocessError) as e:
             logger.error("ffmpeg trim error: %s", e)
             return False
 
@@ -319,7 +372,9 @@ def trim_audio_file(
         concat_inputs.append(f"[a{i}]")
 
     filter_complex = ";".join(filter_parts)
-    filter_complex += f";{''.join(concat_inputs)}concat=n={len(keep_regions)}:v=0:a=1[out]"
+    filter_complex += (
+        f";{''.join(concat_inputs)}concat=n={len(keep_regions)}:v=0:a=1[out]"
+    )
 
     cmd = [
         "ffmpeg",
@@ -334,12 +389,18 @@ def trim_audio_file(
     ]
 
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            errors="replace",
+            timeout=300,
+        )
         if result.returncode != 0:
             logger.error("ffmpeg concat trim failed: %s", result.stderr)
             return False
         return output_path.exists()
-    except (subprocess.TimeoutExpired, Exception) as e:
+    except (subprocess.TimeoutExpired, OSError, subprocess.SubprocessError) as e:
         logger.error("ffmpeg concat trim error: %s", e)
         return False
 
@@ -360,7 +421,7 @@ def trim_recording(
         backup: If True, rename originals with .pretrim suffix before overwriting.
 
     Returns:
-        True if all files were trimmed successfully.
+        True if all existing files were trimmed successfully.
     """
     recording_dir = Path(recording_dir)
     if not recording_dir.is_dir():
@@ -376,18 +437,24 @@ def trim_recording(
         "mixed_stereo.flac",
     ]
 
-    trimmed_any = False
+    any_found = False
+    all_succeeded = True
     for filename in audio_files:
         file_path = recording_dir / filename
         if not file_path.exists():
             continue
 
-        # Create backup
-        if backup:
-            backup_path = file_path.with_suffix(file_path.suffix + ".pretrim")
-            if not backup_path.exists():
-                shutil.copy2(file_path, backup_path)
-                logger.info("Backed up %s -> %s", filename, backup_path.name)
+        any_found = True
+
+        # Create backup before overwriting the original, but only keep it for
+        # files that are successfully trimmed. On failure the original is
+        # untouched, so a leftover backup would be redundant.
+        backup_path = file_path.with_suffix(file_path.suffix + ".pretrim")
+        created_backup = False
+        if backup and not backup_path.exists():
+            shutil.copy2(file_path, backup_path)
+            created_backup = True
+            logger.info("Backed up %s -> %s", filename, backup_path.name)
 
         # Trim to a temp file, then replace the original.
         # Keep the original extension so ffmpeg can infer the output format.
@@ -395,18 +462,23 @@ def trim_recording(
         try:
             if trim_audio_file(file_path, tmp_path, keep_regions):
                 tmp_path.replace(file_path)
-                trimmed_any = True
                 logger.info("Trimmed %s", filename)
             else:
                 if tmp_path.exists():
                     tmp_path.unlink()
+                if created_backup and backup_path.exists():
+                    backup_path.unlink()
                 logger.warning("Failed to trim %s, original preserved", filename)
-        except Exception as e:
+                all_succeeded = False
+        except OSError as e:
             logger.error("Error trimming %s: %s", filename, e)
             if tmp_path.exists():
                 tmp_path.unlink()
+            if created_backup and backup_path.exists():
+                backup_path.unlink()
+            all_succeeded = False
 
-    return trimmed_any
+    return any_found and all_succeeded
 
 
 def compute_trimmed_duration(keep_regions: list[TrimRegion]) -> float:

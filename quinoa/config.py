@@ -51,6 +51,8 @@ class Config:
             try:
                 with open(CONFIG_FILE) as f:
                     saved = json.load(f)
+                    if not isinstance(saved, dict):
+                        raise ValueError("Config file did not contain a JSON object")
                     # Filter out api_key if it was accidentally saved in json before
                     if "api_key" in saved:
                         del saved["api_key"]

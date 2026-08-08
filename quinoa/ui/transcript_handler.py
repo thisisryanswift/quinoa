@@ -98,7 +98,8 @@ def _build_plain_transcript(utterances: list[dict]) -> str:
 def parse_transcription_result(json_str: str) -> dict:
     """Parse transcription JSON result.
 
-    Returns dict with keys: utterances, summary, action_items, transcript (plain text), parse_error
+    Returns dict with keys:
+        utterances, summary, action_items, transcript (plain text), parse_error, partial
     """
     # Strip markdown code fences if present (Gemini sometimes wraps JSON)
     cleaned = json_str.strip()
@@ -147,6 +148,7 @@ def parse_transcription_result(json_str: str) -> dict:
             "summary": summary,
             "action_items": action_items,
             "parse_error": False,
+            "partial": False,
         }
     except json.JSONDecodeError as e:
         logger.warning("JSON parse failed at position %s: %s. Attempting recovery...", e.pos, e.msg)
@@ -163,7 +165,8 @@ def parse_transcription_result(json_str: str) -> dict:
                 "transcript": transcript,
                 "summary": "",  # Can't recover summary from truncated response
                 "action_items": [],  # Can't recover action items
-                "parse_error": False,  # We recovered useful data
+                "parse_error": False,
+                "partial": True,  # Recovered data is incomplete; treat as partial
             }
 
         # Complete failure - return raw text
@@ -173,6 +176,7 @@ def parse_transcription_result(json_str: str) -> dict:
             "summary": "",
             "action_items": [],
             "parse_error": True,
+            "partial": False,
         }
 
 

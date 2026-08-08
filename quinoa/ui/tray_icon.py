@@ -1,18 +1,35 @@
 """System tray icon functionality."""
 
+from __future__ import annotations
+
 import contextlib
 import logging
 import threading
+from typing import TYPE_CHECKING
 
 from PyQt6.QtCore import QObject, QThread, pyqtSignal
 from PyQt6.QtGui import QAction, QIcon
 from PyQt6.QtWidgets import QApplication, QMainWindow, QMenu, QStyle, QSystemTrayIcon
 
+if TYPE_CHECKING:
+    from quinoa.ui.main_window import MainWindow
+
 try:
-    from jeepney import DBusAddress, new_method_call
+    from jeepney import DBusAddress, DBusErrorResponse, new_method_call
+    from jeepney.auth import AuthenticationError
     from jeepney.io.blocking import open_dbus_connection
+    from jeepney.low_level import SizeLimitError
+
+    _DBUS_ERRORS: tuple[type[Exception], ...] = (
+        OSError,
+        RuntimeError,
+        DBusErrorResponse,
+        AuthenticationError,
+        SizeLimitError,
+    )
     HAS_DBUS = True
 except ImportError:
+    _DBUS_ERRORS = (OSError, RuntimeError)
     HAS_DBUS = False
 
 logger = logging.getLogger("quinoa")
@@ -50,7 +67,7 @@ class DBusListener(QThread):
                             self.action_invoked.emit(notif_id, action_key)
                     except TimeoutError:
                         continue
-        except Exception as e:
+        except _DBUS_ERRORS as e:
             logger.debug("DBusListener error (expected during shutdown): %s", e)
 
     def stop(self):
@@ -64,11 +81,13 @@ class DBusNotifier(QObject):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self._address = DBusAddress(
-            '/org/freedesktop/Notifications',
-            bus_name='org.freedesktop.Notifications',
-            interface='org.freedesktop.Notifications'
-        )
+        self._address = None
+        if HAS_DBUS:
+            self._address = DBusAddress(
+                '/org/freedesktop/Notifications',
+                bus_name='org.freedesktop.Notifications',
+                interface='org.freedesktop.Notifications',
+            )
         self._listener = None
         self._event_ids: dict[int, str] = {}  # Map notification ID to event_id
         self._connection = None
@@ -84,7 +103,7 @@ class DBusNotifier(QObject):
             self._listener.action_invoked.connect(self._on_action_invoked)
             self._listener.start()
             return True
-        except Exception as e:
+        except _DBUS_ERRORS as e:
             logger.warning("Failed to setup DBusNotifier: %s", e)
             return False
 
@@ -131,7 +150,7 @@ class DBusNotifier(QObject):
                 notif_id = reply.body[0]
                 self._event_ids[notif_id] = event_id
 
-        except Exception as e:
+        except _DBUS_ERRORS as e:
             logger.warning("Failed to send DBus notification: %s", e)
 
     def cleanup(self):
@@ -159,12 +178,12 @@ class TrayIconManager(QObject):
     message_clicked = pyqtSignal()
     start_recording_requested = pyqtSignal(str) # event_id
 
-    def __init__(self, parent_window: QMainWindow):
+    def __init__(self, parent_window: MainWindow):
         super().__init__(parent_window)
-        self._parent_window: QMainWindow = parent_window
+        self._parent_window: MainWindow = parent_window
         self.tray_icon: QSystemTrayIcon | None = None
         self.record_action: QAction | None = None
-        self._dbus_notifier = None
+        self._dbus_notifier: DBusNotifier | None = None
 
     def setup(self):
         """Initialize the system tray icon."""
@@ -203,11 +222,12 @@ class TrayIconManager(QObject):
         self.tray_icon.show()
 
         # Setup DBus Notifier if available
-        self._dbus_notifier = DBusNotifier(self)
-        if not self._dbus_notifier.setup():
-            self._dbus_notifier = None
-        else:
+        dbus_notifier = DBusNotifier(self)
+        if dbus_notifier.setup():
+            self._dbus_notifier = dbus_notifier
             self._dbus_notifier.start_recording_requested.connect(self.start_recording_requested)
+        else:
+            self._dbus_notifier = None
 
         logger.debug("System tray icon initialized")
         return True

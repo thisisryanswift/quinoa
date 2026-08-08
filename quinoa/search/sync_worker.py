@@ -1,10 +1,13 @@
 """Background worker for syncing meetings to Gemini File Search."""
 
 import contextlib
+import json
 import logging
+import threading
 import time
 from typing import TYPE_CHECKING, Any
 
+import httpx
 from PyQt6.QtCore import QThread, pyqtSignal
 
 from quinoa.constants import FILE_SEARCH_POLL_INTERVAL_MS, MIN_SYNC_DURATION_SECONDS
@@ -36,6 +39,7 @@ class SyncWorker(QThread):
         self.file_search = file_search
         self.poll_interval_ms = poll_interval_ms
         self._running = True
+        self._cancel_event = threading.Event()
         self._pending_queue: list[tuple[str, float]] = []  # (rec_id, eligible_time)
 
     def queue_for_sync(self, rec_id: str, delay_seconds: int = 300) -> None:
@@ -55,13 +59,14 @@ class SyncWorker(QThread):
         """Queue all unsynced recordings for immediate sync (backfill)."""
         unsynced = self.db.get_unsynced_recordings(MIN_SYNC_DURATION_SECONDS)
         for recording in unsynced:
-            rec_id = recording["id"]
-            # Queue with no delay for backfill
-            self._pending_queue.append((rec_id, time.time()))
+            self.queue_for_sync(recording["id"], delay_seconds=0)
         logger.info("Queued %d recordings for backfill sync", len(unsynced))
 
     def run(self) -> None:
         """Main sync loop."""
+        # Reset cancellation state on each run
+        self._cancel_event.clear()
+
         # Initialize store
         try:
             store_name = self.file_search.ensure_store_exists()
@@ -129,8 +134,6 @@ class SyncWorker(QThread):
 
             event = self.db.get_event_for_recording(rec_id)
             if event and event.get("attendees"):
-                import json
-
                 with contextlib.suppress(json.JSONDecodeError, TypeError):
                     attendees = json.loads(event["attendees"])
 
@@ -156,25 +159,37 @@ class SyncWorker(QThread):
                 logger.debug("Skipping %s - content unchanged", rec_id)
                 return
 
-            # Delete old document before re-uploading (prevents duplicates)
+            # Upload the new document first, then delete the old one.  This
+            # avoids data loss if the upload fails or the worker is stopped.
+            old_doc_name = ""
             if sync_status and sync_status.get("file_search_file_name"):
                 old_doc_name = sync_status["file_search_file_name"]
-                self.file_search.delete_meeting(old_doc_name)
 
-            # Upload to File Search
             meeting_date = str(recording.get("started_at", ""))
-            file_name = self.file_search.upload_meeting(rec_id, content, meeting_date)
+            file_name = self.file_search.upload_meeting(
+                rec_id,
+                content,
+                meeting_date,
+                cancellation_event=self._cancel_event,
+            )
 
-            # Update sync status
+            # Update sync status to the new document before deleting the old one.
             self.db.set_sync_status(
                 rec_id, "synced", file_name=file_name, content_hash=content_hash
             )
+
+            if old_doc_name:
+                self.file_search.delete_meeting(old_doc_name)
 
             self.sync_completed.emit(rec_id)
             logger.info("Synced recording %s", rec_id)
 
         except FileSearchError as e:
             logger.error("Failed to sync %s: %s", rec_id, e)
+            self.db.set_sync_status(rec_id, "error", error=str(e))
+            self.sync_failed.emit(rec_id, str(e))
+        except httpx.HTTPError as e:
+            logger.error("Network error syncing %s: %s", rec_id, e)
             self.db.set_sync_status(rec_id, "error", error=str(e))
             self.sync_failed.emit(rec_id, str(e))
         except Exception as e:
@@ -196,5 +211,6 @@ class SyncWorker(QThread):
                     logger.info("Removed %s from File Search", rec_id)
 
     def stop(self) -> None:
-        """Stop the sync worker."""
+        """Stop the sync worker cooperatively."""
         self._running = False
+        self._cancel_event.set()

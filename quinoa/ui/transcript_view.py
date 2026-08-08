@@ -1,5 +1,6 @@
 """Chat-bubble style transcript viewer with speaker editing."""
 
+import html
 import re
 
 from PyQt6.QtCore import Qt, pyqtSignal
@@ -293,8 +294,11 @@ class TranscriptView(QScrollArea):
         # Remove stretch
         while self.container_layout.count():
             item = self.container_layout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
+            if item is None:
+                break
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
 
         # Create bubbles
         for i, u in enumerate(self._utterances):
@@ -546,38 +550,49 @@ class TranscriptView(QScrollArea):
                             break
 
     def highlight_search_term(self, term: str):
-        """Highlight search term and scroll to first match."""
+        """Highlight search term and scroll to first match.
+
+        Match against the original plain text, then escape HTML around the
+        match so entities such as `&lt;` are not falsely highlighted.
+        """
         if not term:
             return
 
         self._clear_highlights()
-        term_lower = term.lower()
+        term_re = re.compile(re.escape(term), re.IGNORECASE)
         first_match = None
 
         for bubble in self._bubbles:
             text = self._utterances[bubble.index].get("text", "")
-            if term_lower in text.lower():
-                if not first_match:
-                    first_match = bubble
+            if not term_re.search(text):
+                continue
 
-                highlighted_text = re.sub(
-                    f"({re.escape(term)})",
-                    r'<span style="background-color: #555500; color: #fff;">\1</span>',
-                    text,
-                    flags=re.IGNORECASE
+            if first_match is None:
+                first_match = bubble
+
+            parts = []
+            last = 0
+            for match in term_re.finditer(text):
+                parts.append(html.escape(text[last : match.start()]))
+                parts.append(
+                    '<span style="background-color: #555500; color: #fff;">'
+                    f"{html.escape(match.group(0))}</span>"
                 )
+                last = match.end()
+            parts.append(html.escape(text[last:]))
+            highlighted_text = "".join(parts)
 
-                # Find the QLabel inside the bubble
-                layout = bubble.layout()
-                if layout is not None:
-                    for i in range(layout.count()):
-                        item = layout.itemAt(i)
-                        if item:
-                            widget = item.widget()
-                            if isinstance(widget, QLabel) and not isinstance(widget, ClickableLabel):
-                                widget.setTextFormat(Qt.TextFormat.RichText)
-                                widget.setText(highlighted_text)
-                                break
+            # Find the QLabel inside the bubble
+            layout = bubble.layout()
+            if layout is not None:
+                for i in range(layout.count()):
+                    item = layout.itemAt(i)
+                    if item:
+                        widget = item.widget()
+                        if isinstance(widget, QLabel) and not isinstance(widget, ClickableLabel):
+                            widget.setTextFormat(Qt.TextFormat.RichText)
+                            widget.setText(highlighted_text)
+                            break
 
         if first_match:
             self.ensureWidgetVisible(first_match, 0, 50)

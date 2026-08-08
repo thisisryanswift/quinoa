@@ -1,6 +1,7 @@
 """Background worker for meeting notifications and recording reminders."""
 
 import logging
+import sqlite3
 from datetime import date, datetime, timedelta
 
 from PyQt6.QtCore import QMutex, QThread, QWaitCondition, pyqtSignal
@@ -91,7 +92,7 @@ class NotificationWorker(QThread):
 
         try:
             events = self.db.get_todays_calendar_events()
-        except Exception as e:
+        except sqlite3.Error as e:
             logger.warning("Notification worker: failed to get events: %s", e)
             return
 
