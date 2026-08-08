@@ -1,0 +1,29 @@
+scripts/check.sh
+  s_06c5f3673bf147::t_5c2aec05333b27 44-46
+AGENTS.md
+  s_06c5f3673bf147::t_e6da7eb0a32453 55-56
+  s_06c5f3673bf147::t_8aeddb4f774417 72-73
+.tickets/qui-1lla.md
+  s_06c5f3673bf147::t_45d526c73793c9 59-62
+README.md
+  s_06c5f3673bf147::t_4cb4a34b6268e0 165-167
+quinoa_audio/src/capture/session.rs
+  s_06c5f3673bf147::t_d0323aea540a05 1680
+  s_06c5f3673bf147::t_61b876cc372fe1 1691
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "8a2a03d64ab7895b56348f55687632b5f2339695",
+  "prompts": {},
+  "sessions": {
+    "s_06c5f3673bf147": {
+      "agent_id": {
+        "tool": "windsurf",
+        "id": "fantasy-bike",
+        "model": "unknown"
+      },
+      "human_author": "Ryan Swift <git@thisisryanswift.com>"
+    }
+  }
+}
