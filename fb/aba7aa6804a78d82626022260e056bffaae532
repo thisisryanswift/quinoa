@@ -1,0 +1,130 @@
+.gitignore
+  s_06c5f3673bf147::t_a7a768a73dd952 41-44
+quinoa/search/file_search.py
+  s_06c5f3673bf147::t_676c316a92eea8 268,283-285,380,394,399
+tests/python/test_file_search.py
+  s_06c5f3673bf147::t_676c316a92eea8 94-96
+tests/python/test_worker_regressions.py
+  s_06c5f3673bf147::t_676c316a92eea8 351,384-386,416-418
+.tickets/qui-fowv.md
+  s_06c5f3673bf147::t_11c42726a72dc5 1-23
+.tickets/qui-rasu.md
+  s_06c5f3673bf147::t_81e0392dd95eda 1-23
+ROADMAP.md
+  s_06c5f3673bf147::t_320702c25ed97c 5-25,39-41,154,165,167
+  s_06c5f3673bf147::t_c435014833613e 26-38
+quinoa/ui/calendar_panel.py
+  s_06c5f3673bf147::t_676c316a92eea8 652,664,670,767
+.tickets/qui-tsd7.md
+  s_06c5f3673bf147::t_bc775c176c9b0a 1-23
+scripts/bundle.sh
+  s_06c5f3673bf147::t_9d635fb7e6556f 54
+  s_06c5f3673bf147::t_fa9cd559e9ad08 53
+  s_06c5f3673bf147::t_32d90d469e3f6c 14-15,18
+.tickets/qui-1lla.md
+  s_06c5f3673bf147::t_5c01c1d2b63874 1-2,4-9,11-18,20-24
+  s_06c5f3673bf147::t_76d9f38eefae49 19
+  s_06c5f3673bf147::t_d47e2bb37c0cef 25-30
+  s_06c5f3673bf147::t_bb0390e5d88aec 10
+  s_06c5f3673bf147::t_66f81a1d3866f6 3,35-38
+  s_06c5f3673bf147::t_f87aeca4abc80a 31-34
+pyproject.toml
+  s_06c5f3673bf147::t_1093d55b78383a 46
+quinoa/audio/trimmer.py
+  s_06c5f3673bf147::t_676c316a92eea8 133,372
+quinoa/transcription/gemini.py
+  s_06c5f3673bf147::t_676c316a92eea8 213
+tests/python/test_calendar_auth.py
+  s_06c5f3673bf147::t_676c316a92eea8 80-82
+tests/python/test_waveform.py
+  s_06c5f3673bf147::t_676c316a92eea8 93
+quinoa.desktop
+  s_06c5f3673bf147::t_9d86b5b808fad5 4
+quinoa/storage/database.py
+  s_06c5f3673bf147::t_676c316a92eea8 421
+AGENTS.md
+  s_06c5f3673bf147::t_e289674a7f668a 184-187
+  s_06c5f3673bf147::t_a251431f88898b 3-5,9-17,21-39,47,50,53-57,59-64,66,68-74,76-79,81,83-84,89,92,94,96-105,107,109,111-113,115,117-121,123,125-129,133-134,136,139-142,144,147-158,162-171,173,175-176,178,180-183,188-189,194-197,200,202,206,208,211-212,214
+  s_06c5f3673bf147::t_28adcdae7548ec 90
+  s_06c5f3673bf147::t_2b13e77e37bbf2 40-43
+quinoa/calendar/auth.py
+  s_06c5f3673bf147::t_676c316a92eea8 121,266-272
+LICENSE
+  s_06c5f3673bf147::t_117503516e86fc 1-21
+README.md
+  s_06c5f3673bf147::t_fb345386fde488 86
+  s_06c5f3673bf147::t_2aef1708af816d 3-5,9-28,52-54,56-57,68,70-72,76-77,82-83,85,87-96,105,107-109,113,116,119,122-129,131-133,135,137,139-141,147-148,156-161,164-168,171-172,174,176-177,180-184,187-194,213-219,221-230,233-240,245,255-258,268-271,274,276-277,281
+  s_06c5f3673bf147::t_a8e7116b67fd4b 149-154
+  s_06c5f3673bf147::t_8ac3c2ca44c10b 275
+.agents/skills/pyqt6-dev/references/threading.md
+  s_06c5f3673bf147::t_104df4c94f355d 48-58,60-71,73-74
+quinoa/audio/mixer.py
+  s_06c5f3673bf147::t_676c316a92eea8 64,301
+.tickets/qui-hnvy.md
+  s_06c5f3673bf147::t_57b6c565c34f65 1-23
+.agents/skills/pyqt6-dev/SKILL.md
+  s_06c5f3673bf147::t_19181288df7f5d 8
+quinoa/transcription/manager.py
+  s_06c5f3673bf147::t_676c316a92eea8 144
+.tickets/qui-j5pw.md
+  s_06c5f3673bf147::t_ed4732b63b2981 1-23
+quinoa/ui/right_panel.py
+  s_06c5f3673bf147::t_676c316a92eea8 346
+quinoa/ui/middle_panel.py
+  s_06c5f3673bf147::t_676c316a92eea8 2237
+.github/workflows/ci.yml
+  s_06c5f3673bf147::t_645b2e7efd3da6 1-11,14-37
+  s_06c5f3673bf147::t_cb05d7df8e29a5 12-13
+tests/manual/test_audio.py
+  s_06c5f3673bf147::t_676c316a92eea8 21
+quinoa/ui/tray_icon.py
+  s_06c5f3673bf147::t_676c316a92eea8 40,50,52-60,68-69,87,95-97,108,130,143-157,192,289-296
+scripts/check.sh
+  s_06c5f3673bf147::t_8f7c48243c4855 1-23,30-53
+  s_06c5f3673bf147::t_cb238caf9213f9 24-29
+quinoa/ui/transcript_view.py
+  s_06c5f3673bf147::t_676c316a92eea8 29,519-523
+tests/python/test_converter.py
+  s_06c5f3673bf147::t_676c316a92eea8 45,52
+docs/designs/2026-08-08-agent-ready-repository.md
+  s_06c5f3673bf147::t_d1e8d37d39262e 153-160
+  s_06c5f3673bf147::t_be589f79181902 106
+  s_06c5f3673bf147::t_db4999fd892f97 2-5
+  s_06c5f3673bf147::t_815948d30ee5b1 45
+  s_06c5f3673bf147::t_36850822a6dd72 98-100
+  s_06c5f3673bf147::t_b328c4a0d21bb8 110,112
+  s_06c5f3673bf147::t_c5c59582775e44 101-102
+  s_06c5f3673bf147::t_07e3e616b08612 143
+  s_06c5f3673bf147::t_13c4b679d7e0bc 79
+  s_06c5f3673bf147::t_8ec4110093359b 189
+  s_06c5f3673bf147::t_ab95253466588a 1,6-44,46-78,80-97,103-105,107-109,111,113-116,118-142,144-152,161-188,190,192-196
+  s_06c5f3673bf147::t_c3c26b775aadf2 117
+  s_06c5f3673bf147::t_1bd2be8a745a72 191
+opencode.json
+  s_06c5f3673bf147::t_ff922e39264343 5
+quinoa_audio/Cargo.toml
+  s_06c5f3673bf147::t_b1f23e852a73ea 25
+  s_06c5f3673bf147::t_a209243ddf570a 11
+tests/python/test_trim_view.py
+  s_06c5f3673bf147::t_676c316a92eea8 77
+.tickets/qui-2mrl.md
+  s_06c5f3673bf147::t_3039c94cfaea3a 1-23
+.tickets/qui-ogi8.md
+  s_06c5f3673bf147::t_e316a211c4f47f 1-23
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "fbaba7aa6804a78d82626022260e056bffaae532",
+  "prompts": {},
+  "sessions": {
+    "s_06c5f3673bf147": {
+      "agent_id": {
+        "tool": "windsurf",
+        "id": "fantasy-bike",
+        "model": "unknown"
+      },
+      "human_author": "Ryan Swift <git@thisisryanswift.com>"
+    }
+  }
+}
