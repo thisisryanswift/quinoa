@@ -1,0 +1,22 @@
+.github/workflows/ci.yml
+  s_06c5f3673bf147::t_b2a4eb93e89f05 20-21
+.tickets/qui-1lla.md
+  s_06c5f3673bf147::t_e25ce5b0e7308b 3,43-46
+  s_06c5f3673bf147::t_d02b299d3eee90 39-42
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "c4d1195a7f3595eddbc80bfe6376047a4da3c5be",
+  "prompts": {},
+  "sessions": {
+    "s_06c5f3673bf147": {
+      "agent_id": {
+        "tool": "windsurf",
+        "id": "fantasy-bike",
+        "model": "unknown"
+      },
+      "human_author": "Ryan Swift <git@thisisryanswift.com>"
+    }
+  }
+}
