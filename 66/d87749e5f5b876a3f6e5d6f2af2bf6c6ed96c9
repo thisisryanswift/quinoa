@@ -1,0 +1,19 @@
+.tickets/qui-2mrl.md
+  s_06c5f3673bf147::t_69282b128b9aa6 38-41
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "66d87749e5f5b876a3f6e5d6f2af2bf6c6ed96c9",
+  "prompts": {},
+  "sessions": {
+    "s_06c5f3673bf147": {
+      "agent_id": {
+        "tool": "windsurf",
+        "id": "fantasy-bike",
+        "model": "unknown"
+      },
+      "human_author": "Ryan Swift <git@thisisryanswift.com>"
+    }
+  }
+}
