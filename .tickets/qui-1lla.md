@@ -1,6 +1,6 @@
 ---
 id: qui-1lla
-status: in_progress
+status: closed
 deps: []
 links: []
 created: 2026-08-08T16:36:56Z
@@ -60,3 +60,7 @@ Hosted CI run 31272298933 reached all 118 tests and exposed two clean-runner ass
 **2026-08-08T18:45:11Z**
 
 Hosted CI run 31272557119 passed all 118 Python tests, then showed `test_stop_returns_ok_for_clean_mock_session` was incorrectly included in the real-audio Rust suite; a headless runner correctly queued a PipeWire configuration error. Gate that test to non-real builds and run both mock and real Rust test suites in the canonical check.
+
+**2026-08-08T18:50:07Z**
+
+Hosted CI run 31272783342 completed successfully on commit 8a2a03d: clean Ubuntu setup, locked sync, canonical Python format/lint/type/tests against mock audio, mock and real Cargo checks/tests, real extension restoration, bundle syntax, and desktop validation all passed. The only annotation is the known non-fatal Node 20 action deprecation warning.
