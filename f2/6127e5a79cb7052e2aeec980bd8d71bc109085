@@ -1,0 +1,21 @@
+pyproject.toml
+  s_06c5f3673bf147::t_1d26833331fa78 45-47
+.tickets/qui-1lla.md
+  s_06c5f3673bf147::t_ddb2d271a459a4 47-50
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "f26127e5a79cb7052e2aeec980bd8d71bc109085",
+  "prompts": {},
+  "sessions": {
+    "s_06c5f3673bf147": {
+      "agent_id": {
+        "tool": "windsurf",
+        "id": "fantasy-bike",
+        "model": "unknown"
+      },
+      "human_author": "Ryan Swift <git@thisisryanswift.com>"
+    }
+  }
+}
