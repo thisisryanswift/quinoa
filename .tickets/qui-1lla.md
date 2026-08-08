@@ -48,3 +48,7 @@ Correction to prior CI note: the failed step was `uv sync --locked --all-groups 
 **2026-08-08T18:30:21Z**
 
 Hosted CI run 31271576705 confirmed uv 0.11.14 but still rejected the lock because the lock was generated with global `exclude-newer = "7 days"` and CI lacked that resolution policy. User explicitly approved promoting the same seven-day minimum package-age policy into `[tool.uv]`, preserving rather than weakening the existing supply-chain control.
+
+**2026-08-08T18:33:15Z**
+
+Hosted CI run 31272131092 passed locked sync, Ruff, and Mypy, then failed Python test collection because the clean Ubuntu runner lacked `libEGL.so.1`, required to import PyQt6 even with QT_QPA_PLATFORM=offscreen. Add the Ubuntu `libegl1` runtime package; no source or test behavior change is required.

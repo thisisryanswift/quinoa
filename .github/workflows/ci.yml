@@ -30,6 +30,7 @@ jobs:
             libclang-dev \
             ffmpeg \
             desktop-file-utils \
+            libegl1 \
             python3-dev
 
       - name: Sync Python dependencies
