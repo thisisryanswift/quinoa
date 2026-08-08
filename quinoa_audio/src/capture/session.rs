@@ -1677,6 +1677,7 @@ mod tests {
 
     static TEST_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
+    #[cfg(not(feature = "real-audio"))]
     fn test_config() -> RecordingConfig {
         let id = TEST_ID.fetch_add(1, Ordering::SeqCst);
         let output_dir = std::env::temp_dir()
@@ -1687,6 +1688,7 @@ mod tests {
         RecordingConfig::new(output_dir, None, false, None, None, None)
     }
 
+    #[cfg(not(feature = "real-audio"))]
     #[test]
     fn test_stop_returns_ok_for_clean_mock_session() {
         let mut session = start_recording_impl(test_config()).unwrap();

@@ -56,3 +56,7 @@ Hosted CI run 31272131092 passed locked sync, Ruff, and Mypy, then failed Python
 **2026-08-08T18:41:22Z**
 
 Hosted CI run 31272298933 reached all 118 tests and exposed two clean-runner assumptions: the integration test requires the mock audio backend, while root sync installed real PipeWire; one transcription test relied on a stale local `/tmp/test.wav`. The canonical gate now builds mock before Python tests and restores real afterward, and the transcription test creates its own tmp_path file. Focused tests and the full local gate pass.
+
+**2026-08-08T18:45:11Z**
+
+Hosted CI run 31272557119 passed all 118 Python tests, then showed `test_stop_returns_ok_for_clean_mock_session` was incorrectly included in the real-audio Rust suite; a headless runner correctly queued a PipeWire configuration error. Gate that test to non-real builds and run both mock and real Rust test suites in the canonical check.

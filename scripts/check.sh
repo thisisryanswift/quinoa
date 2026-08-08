@@ -41,6 +41,9 @@ cargo check --locked --no-default-features --features real-audio
 echo "==> cargo check --locked --no-default-features --features mock"
 cargo check --locked --no-default-features --features mock
 
+echo "==> cargo test --locked --no-default-features --features mock"
+cargo test --locked --no-default-features --features mock
+
 echo "==> cargo test --locked --no-default-features --features real-audio"
 cargo test --locked --no-default-features --features real-audio
 

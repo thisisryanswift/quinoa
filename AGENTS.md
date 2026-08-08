@@ -52,8 +52,8 @@ Run the canonical verifier before finishing:
 
 The script checks, in order: locked UV dependencies, Ruff format and lint,
 Mypy, Python tests against a mock audio build, Rust format, Rust mock/real
-checks and real-audio tests, and then restores the real PipeWire extension.
-It also checks shell syntax and desktop-file validation.
+checks and tests, and then restores the real PipeWire extension. It also checks
+shell syntax and desktop-file validation.
 
 ### Python
 
@@ -69,8 +69,8 @@ It also checks shell syntax and desktop-file validation.
 - `quinoa_audio` builds as a `cdylib` via PyO3.
 - `cargo check --locked --no-default-features --features real-audio` (PipeWire)
   and `--features mock` must pass.
-- `cargo test --locked --no-default-features --features real-audio` must link
-  and pass.
+- `cargo test --locked --no-default-features --features mock` and
+  `--features real-audio` must link and pass.
 - Maturin extension builds enable `extension-module` through `pyproject.toml`;
   normal Cargo checks/tests do not.
 
