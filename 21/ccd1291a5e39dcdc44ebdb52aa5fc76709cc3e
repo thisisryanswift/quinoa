@@ -1,0 +1,39 @@
+.tickets/qui-7af8.md
+  s_222efbf49d8651::t_007a6661cd59a4 3,22-25
+.tickets/qui-szp9.md
+  s_222efbf49d8651::t_007a6661cd59a4 3,22-25
+.tickets/quinoa-m7p.md
+  s_222efbf49d8651::t_007a6661cd59a4 3,78-83
+.tickets/qui-tihw.md
+  s_222efbf49d8651::t_007a6661cd59a4 3,22-25
+.tickets/qui-krlz.md
+  s_222efbf49d8651::t_007a6661cd59a4 3,22-25
+.tickets/qui-bbvf.md
+  s_222efbf49d8651::t_007a6661cd59a4 15-20
+.tickets/qui-df6y.md
+  s_222efbf49d8651::t_007a6661cd59a4 3,22-25
+.tickets/q-e351.md
+  s_222efbf49d8651::t_007a6661cd59a4 3,13-18
+.tickets/qui-u8vi.md
+  s_222efbf49d8651::t_007a6661cd59a4 3,22-25
+.tickets/qui-e3yb.md
+  s_222efbf49d8651::t_007a6661cd59a4 3,22-25
+.tickets/qui-r75a.md
+  s_222efbf49d8651::t_007a6661cd59a4 15-20
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "21ccd1291a5e39dcdc44ebdb52aa5fc76709cc3e",
+  "prompts": {},
+  "sessions": {
+    "s_222efbf49d8651": {
+      "agent_id": {
+        "tool": "windsurf",
+        "id": "pyrite-reward",
+        "model": "unknown"
+      },
+      "human_author": "Ryan Swift <git@thisisryanswift.com>"
+    }
+  }
+}
