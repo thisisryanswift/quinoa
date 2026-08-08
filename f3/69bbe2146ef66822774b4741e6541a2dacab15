@@ -1,0 +1,19 @@
+.tickets/qui-hnvy.md
+  s_06c5f3673bf147::t_70ca45d4fd431b 3,42-45
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.21",
+  "base_commit_sha": "f369bbe2146ef66822774b4741e6541a2dacab15",
+  "prompts": {},
+  "sessions": {
+    "s_06c5f3673bf147": {
+      "agent_id": {
+        "tool": "windsurf",
+        "id": "fantasy-bike",
+        "model": "unknown"
+      },
+      "human_author": "Ryan Swift <git@thisisryanswift.com>"
+    }
+  }
+}
