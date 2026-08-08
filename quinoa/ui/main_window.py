@@ -97,6 +97,9 @@ class MainWindow(QMainWindow):
         # Flag to distinguish quit vs minimize-to-tray
         self._quitting = False
 
+        # Guard to ensure cleanup only runs once during shutdown
+        self._shutdown_started = False
+
         # Create main splitter (horizontal, 3 columns)
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
         self.splitter.setHandleWidth(6)
@@ -195,7 +198,7 @@ class MainWindow(QMainWindow):
         QShortcut(QKeySequence("Ctrl+]"), self).activated.connect(self._toggle_right_panel)
 
         # Quit (Ctrl+Q)
-        QShortcut(QKeySequence("Ctrl+Q"), self).activated.connect(self.close)
+        QShortcut(QKeySequence("Ctrl+Q"), self).activated.connect(self.request_quit)
 
     def _handle_space(self):
         """Handle space key - pause/resume if recording, otherwise ignore."""
@@ -211,6 +214,61 @@ class MainWindow(QMainWindow):
     def toggle_recording(self):
         """Toggle recording state."""
         self.middle_panel.toggle_recording()
+
+    def request_quit(self) -> None:
+        """Sole explicit quit entrypoint: set intent and close the window."""
+        if self._quitting:
+            return
+        self._quitting = True
+        self.close()
+
+    def _cleanup_for_exit(self) -> None:
+        """Idempotent shutdown: stop recording first, then clean up workers."""
+        if self._shutdown_started:
+            return
+        self._shutdown_started = True
+
+        try:
+            self.middle_panel.stop_recording_for_shutdown()
+        except Exception:
+            logger.exception("Unexpected error stopping recording during shutdown")
+
+        self._save_window_state()
+
+        # Stop sync worker
+        if self._sync_worker:
+            self._sync_worker.stop()
+            self._sync_worker.wait(3000)
+
+        # Stop transcription jobs
+        if self.transcription_manager:
+            self.transcription_manager.cancel_all()
+
+        # Stop calendar sync worker
+        self._stop_calendar_sync()
+
+        # Stop notification worker
+        self._stop_notification_worker()
+
+        # Stop compression worker
+        self._stop_compression_worker()
+
+        # Stop any running UI workers (enhancement, chat).  If a worker
+        # does not finish in time, keep it in the process-lifetime pending
+        # set until its unconditional ``done`` signal cleans it up.
+        pending: QThread | None
+        finished, pending = self.middle_panel.cleanup()
+        if not finished and pending is not None:
+            _stash_pending_worker(pending)
+        finished, pending = self.right_panel.cleanup()
+        if not finished and pending is not None:
+            _stash_pending_worker(pending)
+
+        # Stop device monitor
+        self.middle_panel.stop_device_monitor()
+
+        # Clean up D-Bus / tray
+        self.tray_manager.cleanup()
 
     def _focus_notes(self):
         """Focus the notes editor."""
@@ -695,7 +753,11 @@ class MainWindow(QMainWindow):
         config.set("right_panel_collapsed", self._right_collapsed)
 
     def closeEvent(self, a0):
-        """Handle window close - minimize to tray or quit."""
+        """Handle window close - minimize to tray or perform guarded shutdown."""
+        if self._shutdown_started:
+            a0.accept()
+            return
+
         if self.tray_manager.is_visible() and not self._quitting:
             # Minimize to tray instead of closing
             self.hide()
@@ -704,34 +766,9 @@ class MainWindow(QMainWindow):
                 "Quinoa",
                 "Minimized to tray. Right-click icon to quit.",
             )
-        else:
-            # Actually quit - save state and clean up all workers safely.
-            self._save_window_state()
-            # Stop sync worker
-            if self._sync_worker:
-                self._sync_worker.stop()
-                self._sync_worker.wait(3000)
-            # Stop transcription jobs
-            if self.transcription_manager:
-                self.transcription_manager.cancel_all()
-            # Stop calendar sync worker
-            self._stop_calendar_sync()
-            # Stop notification worker
-            self._stop_notification_worker()
-            # Stop compression worker
-            self._stop_compression_worker()
-            # Stop any running UI workers (enhancement, chat).  If a worker
-            # does not finish in time, keep it in the process-lifetime pending
-            # set until its unconditional ``done`` signal cleans it up.
-            pending: QThread | None
-            finished, pending = self.middle_panel.cleanup()
-            if not finished and pending is not None:
-                _stash_pending_worker(pending)
-            finished, pending = self.right_panel.cleanup()
-            if not finished and pending is not None:
-                _stash_pending_worker(pending)
-            # Stop device monitor
-            self.middle_panel.stop_device_monitor()
-            # Clean up D-Bus / tray
-            self.tray_manager.cleanup()
-            a0.accept()
+            return
+
+        # Actual close: set quit intent, stop recording, and clean up workers.
+        self._quitting = True
+        self._cleanup_for_exit()
+        a0.accept()

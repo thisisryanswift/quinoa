@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING
 
 from PyQt6.QtCore import QObject, QThread, pyqtSignal
 from PyQt6.QtGui import QAction, QIcon
-from PyQt6.QtWidgets import QApplication, QMainWindow, QMenu, QStyle, QSystemTrayIcon
+from PyQt6.QtWidgets import QMainWindow, QMenu, QStyle, QSystemTrayIcon
 
 if TYPE_CHECKING:
     from quinoa.ui.main_window import MainWindow
@@ -256,10 +256,7 @@ class TrayIconManager(QObject):
 
     def _quit_application(self):
         """Quit the application (not minimize to tray)."""
-        self._parent_window._quitting = True
-        app = QApplication.instance()
-        if app:
-            app.quit()
+        self._parent_window.request_quit()
 
     def set_recording_state(self, is_recording: bool):
         """Update tray icon to reflect recording state."""

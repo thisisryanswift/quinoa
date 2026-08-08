@@ -1717,7 +1717,7 @@ class MiddlePanel(QWidget):
             else:
                 logger.error("Failed to start recording: %s", e)
 
-    def _stop_recording(self):
+    def _stop_recording(self, *, shutting_down: bool = False):
         """Stop the current recording session."""
         if not self.recording_session:
             return
@@ -1779,7 +1779,7 @@ class MiddlePanel(QWidget):
             self.status_label.setText("Recording saved")
         else:
             self.status_label.setText("Recording failed")
-            if self.isVisible():
+            if not shutting_down and self.isVisible():
                 QMessageBox.critical(
                     self,
                     "Recording Error",
@@ -1792,12 +1792,29 @@ class MiddlePanel(QWidget):
         if self.on_history_changed:
             self.on_history_changed()
 
-        # Auto-transcribe only on a clean stop
-        if stop_error is None and config.get("auto_transcribe", True) and config.get("api_key"):
+        # Auto-transcribe only on a clean, non-shutdown stop
+        if (
+            not shutting_down
+            and stop_error is None
+            and config.get("auto_transcribe", True)
+            and config.get("api_key")
+        ):
             logger.info("Auto-transcribe: starting transcription for %s", rec_id)
             # Short delay to let UI settle before starting transcription.
             # Use instance timer so it can be cancelled if the app closes first.
             self._auto_transcribe_timer.start(500)
+
+    def stop_recording_for_shutdown(self) -> None:
+        """Finalize an active recording during application shutdown.
+
+        Suppresses auto-transcription and modal error dialogs while
+        preserving truthful completed/failed status and best-effort duration.
+        """
+        self._shutting_down = True
+        self._auto_transcribe_timer.stop()
+        if self.recording_session:
+            self._stop_recording(shutting_down=True)
+        self._auto_transcribe_timer.stop()
 
     def _auto_save_notes(self):
         """Auto-save notes during recording."""
@@ -2054,6 +2071,8 @@ class MiddlePanel(QWidget):
 
         logger.error("Audio Error: %s", error_msg)
         self.status_label.setText("Error occurred")
+        if self._shutting_down:
+            return
         QMessageBox.critical(self, "Audio Error", friendly_msg)
 
     def _start_transcription(self):
@@ -2173,6 +2192,8 @@ class MiddlePanel(QWidget):
             self.status_label.setText("Transcription Failed")
             self.transcribe_btn.setEnabled(True)
             self.transcribe_btn.setText("Transcribe")
+            if self._shutting_down:
+                return
             QMessageBox.warning(self, "Transcription Error", error_msg)
 
     def cleanup(self, timeout_ms: int = 2000) -> tuple[bool, EnhanceWorker | None]:
@@ -2261,6 +2282,8 @@ class MiddlePanel(QWidget):
         self.status_label.setText("Enhancement Failed")
         self.enhance_notes_btn.setEnabled(True)
         self.enhance_notes_btn.setText("Generate Enhanced Notes")
+        if self._shutting_down:
+            return
         QMessageBox.warning(self, "Enhancement Error", error_msg)
 
     def focus_notes(self):
