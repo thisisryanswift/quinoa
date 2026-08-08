@@ -37,6 +37,7 @@ logger = logging.getLogger("quinoa")
 
 class DBusListener(QThread):
     """Background thread to listen for D-Bus notification action signals."""
+
     action_invoked = pyqtSignal(int, str)  # (notification_id, action_key)
 
     def __init__(self, parent=None):
@@ -46,11 +47,17 @@ class DBusListener(QThread):
 
     def run(self):
         try:
-            with open_dbus_connection(bus='SESSION') as connection:
+            with open_dbus_connection(bus="SESSION") as connection:
                 # Add match rule to receive ActionInvoked signals
-                match_rule = "type='signal',interface='org.freedesktop.Notifications',member='ActionInvoked'"
-                bus_addr = DBusAddress('/org/freedesktop/DBus', bus_name='org.freedesktop.DBus', interface='org.freedesktop.DBus')
-                msg = new_method_call(bus_addr, 'AddMatch', 's', (match_rule,))
+                match_rule = (
+                    "type='signal',interface='org.freedesktop.Notifications',member='ActionInvoked'"
+                )
+                bus_addr = DBusAddress(
+                    "/org/freedesktop/DBus",
+                    bus_name="org.freedesktop.DBus",
+                    interface="org.freedesktop.DBus",
+                )
+                msg = new_method_call(bus_addr, "AddMatch", "s", (match_rule,))
                 connection.send_and_get_reply(msg)
 
                 while self._running.is_set():
@@ -58,8 +65,8 @@ class DBusListener(QThread):
                         msg = connection.receive(timeout=1.0)
                         if (
                             msg
-                            and msg.header.message_type.name == 'SIGNAL'
-                            and msg.header.fields.get(3) == 'ActionInvoked'
+                            and msg.header.message_type.name == "SIGNAL"
+                            and msg.header.fields.get(3) == "ActionInvoked"
                         ):
                             # Body contains (id: uint32, action_key: string)
                             notif_id = msg.body[0]
@@ -77,6 +84,7 @@ class DBusListener(QThread):
 
 class DBusNotifier(QObject):
     """Manages Freedesktop D-Bus notifications with action buttons."""
+
     start_recording_requested = pyqtSignal(str)  # event_id
 
     def __init__(self, parent=None):
@@ -84,9 +92,9 @@ class DBusNotifier(QObject):
         self._address = None
         if HAS_DBUS:
             self._address = DBusAddress(
-                '/org/freedesktop/Notifications',
-                bus_name='org.freedesktop.Notifications',
-                interface='org.freedesktop.Notifications',
+                "/org/freedesktop/Notifications",
+                bus_name="org.freedesktop.Notifications",
+                interface="org.freedesktop.Notifications",
             )
         self._listener = None
         self._event_ids: dict[int, str] = {}  # Map notification ID to event_id
@@ -97,7 +105,7 @@ class DBusNotifier(QObject):
             return False
         try:
             # Persistent connection for sending notifications
-            self._connection = open_dbus_connection(bus='SESSION')
+            self._connection = open_dbus_connection(bus="SESSION")
 
             self._listener = DBusListener()
             self._listener.action_invoked.connect(self._on_action_invoked)
@@ -119,7 +127,7 @@ class DBusNotifier(QObject):
         message: str,
         duration_ms: int = 2000,
         event_id: str | None = None,
-        show_action: bool = False
+        show_action: bool = False,
     ):
         if not self._connection:
             return
@@ -132,16 +140,21 @@ class DBusNotifier(QObject):
             # hints dictionary. 'urgency' 1 is normal
             hints = {"urgency": ("y", 1)}
 
-            msg = new_method_call(self._address, 'Notify', 'susssasa{sv}i', (
-                'Quinoa',     # app_name
-                0,            # replaces_id
-                'media-record', # app_icon
-                title,        # summary
-                message,      # body
-                actions,      # actions
-                hints,        # hints
-                duration_ms   # expire_timeout
-            ))
+            msg = new_method_call(
+                self._address,
+                "Notify",
+                "susssasa{sv}i",
+                (
+                    "Quinoa",  # app_name
+                    0,  # replaces_id
+                    "media-record",  # app_icon
+                    title,  # summary
+                    message,  # body
+                    actions,  # actions
+                    hints,  # hints
+                    duration_ms,  # expire_timeout
+                ),
+            )
 
             # send_and_get_reply() returns a Message object
             reply = self._connection.send_and_get_reply(msg)
@@ -176,7 +189,7 @@ class TrayIconManager(QObject):
     # Emitted when the user clicks a notification balloon/toast.
     # Connected once here so it survives any future icon recreation.
     message_clicked = pyqtSignal()
-    start_recording_requested = pyqtSignal(str) # event_id
+    start_recording_requested = pyqtSignal(str)  # event_id
 
     def __init__(self, parent_window: MainWindow):
         super().__init__(parent_window)
@@ -273,7 +286,14 @@ class TrayIconManager(QObject):
         if self._dbus_notifier:
             self._dbus_notifier.cleanup()
 
-    def show_message(self, title: str, message: str, duration_ms: int = 2000, event_id: str | None = None, show_action: bool = False):
+    def show_message(
+        self,
+        title: str,
+        message: str,
+        duration_ms: int = 2000,
+        event_id: str | None = None,
+        show_action: bool = False,
+    ):
         """Show a tray notification message."""
         if self._dbus_notifier:
             self._dbus_notifier.show_message(title, message, duration_ms, event_id, show_action)

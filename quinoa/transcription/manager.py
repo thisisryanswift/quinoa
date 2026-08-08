@@ -141,9 +141,7 @@ class TranscriptionManager(QObject):
             return
 
         # Full successful transcription
-        self.db.save_transcript(
-            rec_id, result["transcript"], result["summary"], utterances_json
-        )
+        self.db.save_transcript(rec_id, result["transcript"], result["summary"], utterances_json)
         self.db.save_action_items(rec_id, result.get("action_items", []))
         self.db.update_recording_status(rec_id, status="transcribed")
 

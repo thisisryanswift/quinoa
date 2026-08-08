@@ -26,7 +26,7 @@ def parse_timestamp_to_ms(ts: str | None) -> int | None:
         return None
     # Remove any brackets or whitespace
     ts = ts.strip("[] \t")
-    parts = ts.split(':')
+    parts = ts.split(":")
     try:
         if len(parts) == 2:
             m, s = parts
@@ -516,7 +516,11 @@ class TranscriptView(QScrollArea):
         active_bubble = None
         for bubble in self._bubbles:
             # Find utterance matching playback time (assumes sequential)
-            if bubble.start_time_ms is not None and ms >= bubble.start_time_ms and (bubble.end_time_ms is None or ms < bubble.end_time_ms):
+            if (
+                bubble.start_time_ms is not None
+                and ms >= bubble.start_time_ms
+                and (bubble.end_time_ms is None or ms < bubble.end_time_ms)
+            ):
                 active_bubble = bubble
                 break
 

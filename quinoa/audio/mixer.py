@@ -61,9 +61,7 @@ def _ffprobe(path: Path) -> dict[str, object]:
 
     info = dict(streams[0])
     format_info = data.get("format", {})
-    info["format_duration"] = (
-        format_info.get("duration") if isinstance(format_info, dict) else None
-    )
+    info["format_duration"] = format_info.get("duration") if isinstance(format_info, dict) else None
     return info
 
 
@@ -300,9 +298,7 @@ def create_stereo_mix(
         try:
             tmp_path.replace(output_path)
         except OSError as e:
-            raise RuntimeError(
-                f"Failed to move mixed output to {output_path}: {e}"
-            ) from e
+            raise RuntimeError(f"Failed to move mixed output to {output_path}: {e}") from e
 
         success = True
         return str(output_path)

@@ -91,7 +91,9 @@ def test_query_does_not_fall_back_on_unrelated_4xx(monkeypatch):
     )
     monkeypatch.setattr(
         "quinoa.search.file_search.config",
-        MagicMock(get=lambda key, default=None: "custom-model" if key == "gemini_model" else default),
+        MagicMock(
+            get=lambda key, default=None: "custom-model" if key == "gemini_model" else default
+        ),
     )
 
     with pytest.raises(FileSearchError):

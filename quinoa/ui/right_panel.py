@@ -343,9 +343,7 @@ class RightPanel(QWidget):
         )
         self._chat_worker.response_ready.connect(self._on_response)
         self._chat_worker.error.connect(self._on_error)
-        self._chat_worker.done.connect(
-            lambda worker=self._chat_worker: worker.deleteLater()
-        )
+        self._chat_worker.done.connect(lambda worker=self._chat_worker: worker.deleteLater())
         self._chat_worker.start()
 
     def _on_response(self, response: str, citations: list[dict[str, Any]]) -> None:

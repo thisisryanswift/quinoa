@@ -77,8 +77,9 @@ def test_load_tokens_corrupt_non_dict_is_deleted():
     def fake_delete(*_args):
         deleted["called"] = True
 
-    with patch.object(keyring, "get_password", fake_get), patch.object(
-        keyring, "delete_password", fake_delete
+    with (
+        patch.object(keyring, "get_password", fake_get),
+        patch.object(keyring, "delete_password", fake_delete),
     ):
         assert auth._load_tokens() is None
     assert deleted["called"] is True

@@ -42,21 +42,14 @@ def _read_wav(path: Path) -> tuple[int, int, list[tuple[int, ...]]]:
 
     fmt = "<" + "h" * nchannels
     stride = nchannels * SAMPLE_WIDTH
-    frames = [
-        struct.unpack(fmt, data[i : i + stride])
-        for i in range(0, len(data), stride)
-    ]
+    frames = [struct.unpack(fmt, data[i : i + stride]) for i in range(0, len(data), stride)]
     return nchannels, nframes, frames
 
 
 def _encode(path: Path, format: str) -> Path:
     """Encode a WAV file to FLAC or Opus, returning the new path."""
     output = path.with_suffix(f".{format}")
-    codec = (
-        ["-c:a", "libopus", "-b:a", "64k"]
-        if format == "opus"
-        else ["-c:a", format]
-    )
+    codec = ["-c:a", "libopus", "-b:a", "64k"] if format == "opus" else ["-c:a", format]
     cmd = ["ffmpeg", "-y", "-i", str(path), *codec, str(output)]
     subprocess.run(cmd, check=True, capture_output=True)
     return output

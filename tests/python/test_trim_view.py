@@ -74,9 +74,7 @@ def test_analysis_worker_emits_finished_on_exception(
 
 
 @pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="ffmpeg not installed")
-def test_trim_worker_emits_finished_on_success(
-    qapp: QApplication, tmp_path: Path
-) -> None:
+def test_trim_worker_emits_finished_on_success(qapp: QApplication, tmp_path: Path) -> None:
     """TrimWorker emits finished with success=True after a valid trim."""
     from quinoa.audio.trimmer import TrimRegion
 

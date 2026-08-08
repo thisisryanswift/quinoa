@@ -130,10 +130,7 @@ def _iter_samples(raw: bytes, sample_width: int, frame_bytes: int) -> Iterator[i
     if sample_width == 4:
         return (v[0] for v in struct.iter_unpack("<i", raw[:frame_bytes]))
     # 24-bit: unpack manually
-    return (
-        int.from_bytes(raw[i : i + 3], "little", signed=True)
-        for i in range(0, frame_bytes, 3)
-    )
+    return (int.from_bytes(raw[i : i + 3], "little", signed=True) for i in range(0, frame_bytes, 3))
 
 
 def _analyse_wav(
@@ -372,9 +369,7 @@ def trim_audio_file(
         concat_inputs.append(f"[a{i}]")
 
     filter_complex = ";".join(filter_parts)
-    filter_complex += (
-        f";{''.join(concat_inputs)}concat=n={len(keep_regions)}:v=0:a=1[out]"
-    )
+    filter_complex += f";{''.join(concat_inputs)}concat=n={len(keep_regions)}:v=0:a=1[out]"
 
     cmd = [
         "ffmpeg",

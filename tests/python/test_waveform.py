@@ -90,7 +90,5 @@ def test_suggest_cuts_from_silence(widget: WaveformWidget) -> None:
 
 def test_suggest_cuts_from_silence_edge_only(widget: WaveformWidget) -> None:
     """With edge_only, only silences at the start or end of the file are kept."""
-    widget.suggest_cuts_from_silence(
-        [(0.0, 1.5), (3.0, 6.0), (8.5, 10.0)], edge_only=True
-    )
+    widget.suggest_cuts_from_silence([(0.0, 1.5), (3.0, 6.0), (8.5, 10.0)], edge_only=True)
     assert widget.get_cuts() == [CutMarker(0.0, 1.5), CutMarker(8.5, 10.0)]

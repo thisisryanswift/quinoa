@@ -2234,9 +2234,7 @@ class MiddlePanel(QWidget):
         self._enhance_worker = EnhanceWorker(self._cached_notes, transcript_text, summary)
         self._enhance_worker.notes_ready.connect(self._on_enhancement_finished)
         self._enhance_worker.error.connect(self._on_enhancement_error)
-        self._enhance_worker.done.connect(
-            lambda worker=self._enhance_worker: worker.deleteLater()
-        )
+        self._enhance_worker.done.connect(lambda worker=self._enhance_worker: worker.deleteLater())
         self._enhance_worker.start()
 
     def _on_enhancement_finished(self, enhanced_notes: str):

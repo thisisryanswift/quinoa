@@ -649,9 +649,7 @@ class CalendarPanel(QWidget):
         safe_title = html.escape(title)
         safe_date = html.escape(date_str)
         safe_snippet = (
-            html.escape(snippet)
-            .replace(SNIP_START, "<b>")
-            .replace(SNIP_END, "</b>")
+            html.escape(snippet).replace(SNIP_START, "<b>").replace(SNIP_END, "</b>")
             if snippet
             else ""
         )
@@ -663,17 +661,13 @@ class CalendarPanel(QWidget):
         layout.setSpacing(2)
 
         # Header: Title + Date
-        header_lbl = QLabel(
-            f"<b>{safe_title}</b> <span style='color: #888;'>{safe_date}</span>"
-        )
+        header_lbl = QLabel(f"<b>{safe_title}</b> <span style='color: #888;'>{safe_date}</span>")
         header_lbl.setTextFormat(Qt.TextFormat.RichText)
         layout.addWidget(header_lbl)
 
         # Snippet
         if safe_snippet:
-            snippet_lbl = QLabel(
-                f"<span style='color: #ccc;'>...{safe_snippet}...</span>"
-            )
+            snippet_lbl = QLabel(f"<span style='color: #ccc;'>...{safe_snippet}...</span>")
             snippet_lbl.setTextFormat(Qt.TextFormat.RichText)
             snippet_lbl.setWordWrap(True)
             layout.addWidget(snippet_lbl)
@@ -770,9 +764,7 @@ class CalendarPanel(QWidget):
 
                 for folder in folders:
                     action = QAction(folder["name"], self)
-                    action.triggered.connect(
-                        lambda f=folder: self._move_recording(rec_id, f["id"])
-                    )
+                    action.triggered.connect(lambda f=folder: self._move_recording(rec_id, f["id"]))
                     move_menu.addAction(action)
 
             menu.addSeparator()

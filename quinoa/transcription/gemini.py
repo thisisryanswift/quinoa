@@ -210,10 +210,7 @@ class GeminiTranscriber:
             safe_title = _sanitize_metadata(str(title), 200)
             metadata["meeting_title"] = safe_title
         if attendees:
-            safe_attendees = [
-                _sanitize_metadata(str(a), 100)
-                for a in attendees[:50]
-            ]
+            safe_attendees = [_sanitize_metadata(str(a), 100) for a in attendees[:50]]
             metadata["known_participants"] = safe_attendees
 
         metadata_json = json.dumps(metadata, ensure_ascii=True)

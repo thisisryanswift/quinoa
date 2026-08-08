@@ -38,3 +38,7 @@ mise.toml
 .gemini/
 context.md
 secrets.json
+
+# Local agent/MCP configuration
+.devin/config.local.json
+.devin/mcp_config.local.json

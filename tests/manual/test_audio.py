@@ -18,10 +18,7 @@ try:
             f"  Bluetooth: {device.is_bluetooth}, Sample Rate: {device.sample_rate}, Channels: {device.channels}, Default: {device.is_default}"
         )
         # Pick first microphone for testing
-        if (
-            device.device_type == quinoa_audio.DeviceType.Microphone
-            and mic_device is None
-        ):
+        if device.device_type == quinoa_audio.DeviceType.Microphone and mic_device is None:
             mic_device = device
 except Exception as e:
     print(f"Error listing devices: {e}")

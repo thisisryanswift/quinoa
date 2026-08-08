@@ -45,10 +45,30 @@ worker.start()
 ```
 
 ### Safe Stop
-Wait for threads to finish before closing the application or destroying widgets.
+Never call `QThread.terminate()`. It leaves objects and locks in an undefined state and can corrupt the audio pipeline or database. Instead, use cooperative cancellation and wait for `run()` to return.
+
 ```python
-if worker.isRunning():
-    worker.terminate() # Only as a last resort
-    worker.wait()
+def stop_worker(worker: MyWorker) -> None:
+    worker.cancel()                 # set _is_cancelled + requestInterruption()
+    if not worker.wait(msecs=5000): # wait up to 5 s
+        logger.warning("Worker did not finish in time; it will be cleaned up when its terminal signal fires")
 ```
-Prefer cooperative cancellation (using a flag like `self._is_cancelled`) over `terminate()`.
+
+Inside `run()`, poll a cancellation flag and/or `isInterruptionRequested()` at safe boundaries:
+
+```python
+def run(self):
+    try:
+        for item in self.data:
+            if self._is_cancelled or self.isInterruptionRequested():
+                return
+            self.process(item)
+    except Exception as e:
+        self.error.emit(str(e))
+    finally:
+        # Emit a terminal signal (e.g. `done`) so the manager can delete the
+        # worker only after it has truly stopped.
+        self.done.emit()
+```
+
+Quinoa workers combine a private `_is_cancelled` flag, a `threading.Event` for blocking I/O (such as ffmpeg or network calls), and `requestInterruption()` for the Qt event loop. See `quinoa/ui/transcribe_worker.py` and `quinoa/transcription/manager.py` for the canonical project pattern.

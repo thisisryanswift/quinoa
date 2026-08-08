@@ -2,6 +2,43 @@
 
 ## Recently Completed
 
+### Session: 2026-08-08
+
+**Agent-Ready Repository Baseline:**
+
+- Added canonical `./scripts/check.sh` and a core GitHub Actions CI workflow on
+  `ubuntu-latest`.
+- Added the standard MIT license with `Copyright (c) 2025 Ryan Swift`.
+- Established a clean Ruff-formatted Python baseline across `quinoa/` and
+  `tests/`.
+- Repaired the PyO3 `extension-module` feature boundary: Maturin builds enable
+  `extension-module` while normal Cargo checks/tests use standard Python
+  linkage.
+- Made local desktop bundling portable: `quinoa.desktop` ships with
+  `Exec=quinoa`, and `scripts/bundle.sh` rewrites `Exec` and `Icon` for the
+  current user.
+- Updated README, AGENTS, and ROADMAP to reflect current dependencies,
+  commands, and test status.
+- Added `.gitignore` coverage for local agent/MCP config files.
+- Kept OpenCode and Devin adapters thin and optional; removed the stale
+  `gemini-api-dev` skill permission from `opencode.json`.
+
+**Reliability Hardening:**
+
+- Hardened Rust audio capture and mixing: prevented loss/corruption in the
+  encoder pipeline, preserved full duration with atomic stereo mixing, and
+  hardened streaming trimmer analysis and failure paths.
+- Hardened worker lifecycle: fixed transcription multitasking regressions,
+  restored network failure handling, and made shutdown bounded and cancellable.
+- Improved transcript recovery and File Search sync: truthful partial-recovery
+  semantics, untrusted prompt-data isolation, resync on renames/speaker updates,
+  and reduced sync delay.
+- Expanded regression coverage: added tests for trimmer, waveform, converter,
+  mixer, worker lifecycle, and File Search sync.
+
+This session is a repository-hygiene baseline, not a completion of the
+unresolved product ideas below.
+
 ### Session: 2026-03-01
 
 **Speaker Intelligence (Epic):**
@@ -111,16 +148,10 @@
 
 ## Planned Features
 
-### High Priority
-
-#### Trim Feature Polish & Testing
-The Trim UI and logic are implemented but have zero test coverage.
-- [ ] Add unit tests for `trimmer.py` logic (silence detection, region merging).
-- [ ] Add tests for `waveform_widget.py` (cut management and UI logic).
-
 ### Medium Priority
 
 #### RAG Agent Enhancements - Series Context & Memory (Epic)
+
 Leverage meeting folders for better AI context and memory.
 
 - **Series-Aware Search**: Search across all meetings in a folder ("What did Sarah and I discuss about the promotion?").
@@ -131,7 +162,9 @@ Leverage meeting folders for better AI context and memory.
 ### Low Priority
 
 #### Multi-User / Enterprise Support
+
 Future consideration for teams.
+
 - Shared folders
 - Collaborative notes
 - Teams integration

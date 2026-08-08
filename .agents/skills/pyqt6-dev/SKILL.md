@@ -5,7 +5,7 @@ description: Expert guidance for developing PyQt6 applications. Use when impleme
 
 # PyQt6 Development Guide
 
-This skill provides expert patterns for building robust, responsive, and high-DPI aware PyQt6 applications. It's designed to help Gemini CLI build maintainable UI code and handle complex background operations.
+This skill provides expert patterns for building robust, responsive, and high-DPI aware PyQt6 applications. It is designed to help build maintainable UI code and handle complex background operations.
 
 ## Core Workflows
 

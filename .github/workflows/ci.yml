@@ -1,0 +1,37 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libpipewire-0.3-dev \
+            pkg-config \
+            clang \
+            libclang-dev \
+            ffmpeg \
+            desktop-file-utils \
+            python3-dev
+
+      - name: Sync Python dependencies
+        run: uv sync --locked --all-groups --python 3.12
+
+      - name: Run canonical checks
+        run: ./scripts/check.sh

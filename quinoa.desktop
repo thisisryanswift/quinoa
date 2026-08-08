@@ -1,7 +1,7 @@
 [Desktop Entry]
 Name=Quinoa
 Comment=Meeting Recording and Transcription
-Exec=/home/rswift/.local/bin/quinoa
+Exec=quinoa
 Icon=quinoa
 Terminal=false
 Type=Application

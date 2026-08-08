@@ -265,9 +265,7 @@ class FileSearchManager:
                     system_instruction=system_instruction,
                     tools=[
                         types.Tool(
-                            file_search=types.FileSearch(
-                                file_search_store_names=[store_name]
-                            )
+                            file_search=types.FileSearch(file_search_store_names=[store_name])
                         )
                     ],
                 ),
@@ -282,7 +280,9 @@ class FileSearchManager:
             is_tool_error = (
                 isinstance(code, int)
                 and 400 <= code < 500
-                and ("tool" in error_text or "file_search" in error_text or "function" in error_text)
+                and (
+                    "tool" in error_text or "file_search" in error_text or "function" in error_text
+                )
             )
 
             if model != GEMINI_MODEL_SEARCH and is_tool_error:
@@ -377,9 +377,7 @@ class FileSearchManager:
 
         if meeting_context.folder_name:
             safe_folder = _sanitize_context_text(meeting_context.folder_name)
-            context_parts.append(
-                f'This meeting is part of the series "{safe_folder}".'
-            )
+            context_parts.append(f'This meeting is part of the series "{safe_folder}".')
 
         if meeting_context.attendees:
             safe_names = ", ".join(
@@ -393,15 +391,12 @@ class FileSearchManager:
                 summary_title = _sanitize_context_text(str(s.get("title", "")))
                 summary_date = _sanitize_context_text(str(s.get("date", "")))
                 summary_text = _sanitize_context_text(str(s.get("summary", "")))
-                context_parts.append(
-                    f"- {summary_title} ({summary_date}): {summary_text}"
-                )
+                context_parts.append(f"- {summary_title} ({summary_date}): {summary_text}")
 
         elif meeting_context.recent_meetings:
             safe_recent = [_sanitize_context_text(m) for m in meeting_context.recent_meetings]
             context_parts.append(
-                "Recent meetings in this series:\n"
-                + "\n".join(f"- {m}" for m in safe_recent)
+                "Recent meetings in this series:\n" + "\n".join(f"- {m}" for m in safe_recent)
             )
 
         if context_parts:

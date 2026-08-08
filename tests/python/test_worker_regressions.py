@@ -348,11 +348,7 @@ def test_stop_recording_failure_marks_failed_and_does_not_auto_transcribe(
         mp.config,
         "get",
         lambda key, default=None: (
-            True
-            if key == "auto_transcribe"
-            else "test-key"
-            if key == "api_key"
-            else default
+            True if key == "auto_transcribe" else "test-key" if key == "api_key" else default
         ),
     )
 
@@ -385,7 +381,9 @@ def test_stop_recording_failure_marks_failed_and_does_not_auto_transcribe(
 
     # Prevent the real transcription path from firing if the timer were started.
     transcription_calls: list[str] = []
-    monkeypatch.setattr(panel, "_start_transcription", lambda: transcription_calls.append(panel.current_rec_id))
+    monkeypatch.setattr(
+        panel, "_start_transcription", lambda: transcription_calls.append(panel.current_rec_id)
+    )
 
     panel._stop_recording()
 
@@ -415,7 +413,9 @@ def test_stop_recording_failure_marks_failed_and_does_not_auto_transcribe(
     # No auto-transcribe and no success/completed status.
     assert not transcription_calls
     assert not panel._auto_transcribe_timer.isActive()
-    assert "completed" not in [call.args[1] for call in panel.db.update_recording_status.call_args_list]
+    assert "completed" not in [
+        call.args[1] for call in panel.db.update_recording_status.call_args_list
+    ]
 
 
 # -----------------------------------------------------------------------------

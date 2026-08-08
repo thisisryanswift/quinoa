@@ -418,9 +418,7 @@ class Database:
         fts_query = f'"{clean_query}"'
 
         # Escape LIKE wildcards in the query so user-supplied %/_ are literal.
-        like_escaped = (
-            query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-        )
+        like_escaped = query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         like_query = f"%{like_escaped}%"
 
         logger.debug("Searching transcripts (query length %d)", len(query))

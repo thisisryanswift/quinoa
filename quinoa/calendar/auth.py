@@ -118,9 +118,7 @@ def _load_tokens() -> dict | None:
 
         result = json.loads(tokens_json)
         if not isinstance(result, dict):
-            raise TypeError(
-                f"expected token JSON object, got {type(result).__name__}"
-            )
+            raise TypeError(f"expected token JSON object, got {type(result).__name__}")
         return result
     except (json.JSONDecodeError, ValueError, KeyError, TypeError) as e:
         # Data corruption — delete the broken entry.
@@ -265,7 +263,13 @@ def authenticate() -> Any:
             logger.info("Calendar authentication successful")
             return creds
 
-    except (ValueError, RefreshError, TransportError, RequestException, httplib2.HttpLib2Error) as e:
+    except (
+        ValueError,
+        RefreshError,
+        TransportError,
+        RequestException,
+        httplib2.HttpLib2Error,
+    ) as e:
         logger.error("Calendar authentication failed: %s", e)
     except Exception as e:
         logger.error("Calendar authentication failed: %s", e)

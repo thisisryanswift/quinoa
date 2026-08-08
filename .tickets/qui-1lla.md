@@ -1,0 +1,38 @@
+---
+id: qui-1lla
+status: closed
+deps: []
+links: []
+created: 2026-08-08T16:36:56Z
+type: chore
+priority: 1
+assignee: Ryan Swift
+external-ref: docs/designs/2026-08-08-agent-ready-repository.md#ea642f781b54709058a292865f72f06b4118b6d46ddbcd9c98f7f6081013f017
+tags: [agent-infra, docs, ci]
+---
+# Establish agent-ready repository baseline
+
+Implement the approved balanced repository-readiness design using an agent-neutral AGENTS/scripts core with thin OpenCode and Devin adapters. Scope includes truthful docs, canonical local checks, core CI, Python format baseline, PyO3 test/build feature separation, portable desktop bundling, MIT licensing, and deferred hygiene tickets. Exact tracked deletions remain human-confirmed and orchestrator-owned.
+
+## Design
+
+Follow docs/designs/2026-08-08-agent-ready-repository.md at exact body hash ea642f781b54709058a292865f72f06b4118b6d46ddbcd9c98f7f6081013f017. The four approved stale-path deletions remain orchestrator-owned; all other implementation work is delegated to the SWE worker.
+
+## Acceptance Criteria
+
+Canonical scripts/check.sh passes; Maturin real and mock extension builds import; README/AGENTS/ROADMAP are accurate; CI invokes the canonical check; Python baseline is formatted; real/mock Rust checks and real tests pass; desktop entry is portable and validates; LICENSE has the approved attribution; local Devin config/MCP files are ignored; deferred hygiene tickets are created without duplicates; no unconfirmed deletion, commit, push, PR, live API call, or real recording occurs.
+
+
+## Notes
+
+**2026-08-08T17:27:52Z**
+
+Implementation pause 2026-08-08: approved design requested a parent hygiene epic with child tickets, but the active Ticket workflow requires flat outcome tickets and prohibits epics. Existing implementation changes are preserved; deferred Ticket creation and further writes are paused pending focused design correction and reapproval.
+
+**2026-08-08T17:57:50Z**
+
+Design reapproved 2026-08-08: deferred hygiene tracking changed from an epic/child graph to flat independent Tickets to comply with the active Ticket workflow. Old body hash: bcf45a1c24c1b43790dec19105f742515ca6208d87146cf1f0255060ea5595f1. New approved body hash: ea642f781b54709058a292865f72f06b4118b6d46ddbcd9c98f7f6081013f017. Execution reauthorized.
+
+**2026-08-08T18:11:26Z**
+
+Fresh completion evidence on approved design ea642f781b54709058a292865f72f06b4118b6d46ddbcd9c98f7f6081013f017: ./scripts/check.sh exited 0; Ruff format/lint and Mypy passed over 61 files; pytest collected 118 and passed all with 27 known SQLite datetime deprecation warnings tracked in qui-2mrl; real/mock locked cargo checks passed; real-audio cargo test passed 18/18; bundle shell syntax passed; desktop-file-validate exited 0 with non-fatal multi-category hints. Mock Maturin build/import and final real Maturin build/import both passed, leaving the real extension installed. git diff --check is clean; no staged changes; HEAD remains 392d619. Independent integrated review has no material findings after retracting an incorrect local/CI discrepancy claim; focused ticket-guidance re-review is clean. Seven independent hygiene tickets are open with no cycles/dependencies. Hosted GitHub Actions remains unverified because no push/PR was authorized.

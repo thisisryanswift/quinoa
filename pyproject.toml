@@ -43,7 +43,7 @@ dev = [
 ]
 
 [tool.maturin]
-features = ["pyo3/extension-module", "real-audio"]
+features = ["extension-module", "real-audio"]
 module-name = "quinoa_audio"
 manifest-path = "quinoa_audio/Cargo.toml"
 

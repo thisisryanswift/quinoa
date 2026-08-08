@@ -11,11 +11,11 @@ ICON_DEST="${HOME}/.local/share/icons/hicolor/scalable/apps/quinoa.png"
 
 echo "📦 Bundling Quinoa local release..."
 
-# 1. Build Rust extension in release mode
+# 1. Build Rust extension in release mode from the project root so that
+# pyproject.toml [tool.maturin] enables both extension-module and real-audio.
 echo "🦀 Building Rust extension (release)..."
-cd "$PROJECT_ROOT/quinoa_audio"
-uv run maturin develop --release --features real-audio
 cd "$PROJECT_ROOT"
+uv run maturin develop --release
 
 # 2. Create the bin wrapper
 echo "🔨 Creating wrapper script..."
@@ -50,8 +50,8 @@ cp "$SQUARED_ICON" "$HOME/.local/share/icons/quinoa.png"
 # 4. Install the desktop file
 echo "🖥️ Installing desktop entry..."
 mkdir -p "$(dirname "$DESKTOP_DEST")"
-# Use absolute path for icon in desktop file to be extra safe
-sed "s|Icon=quinoa|Icon=$HOME/.local/share/icons/quinoa.png|" "$PROJECT_ROOT/quinoa.desktop" > "$DESKTOP_DEST"
+# Rewrite Exec and Icon to current-user absolute paths
+sed -e "s|^Exec=.*|Exec=$BIN_DEST|" -e "s|^Icon=.*|Icon=$HOME/.local/share/icons/quinoa.png|" "$PROJECT_ROOT/quinoa.desktop" > "$DESKTOP_DEST"
 
 # Update desktop database
 update-desktop-database "$(dirname "$DESKTOP_DEST")" || true
