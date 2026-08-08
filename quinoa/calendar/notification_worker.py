@@ -8,6 +8,7 @@ from PyQt6.QtCore import QMutex, QThread, QWaitCondition, pyqtSignal
 
 from quinoa.config import config
 from quinoa.constants import get_now
+from quinoa.datetime_utils import to_local_naive
 from quinoa.storage.database import Database
 
 logger = logging.getLogger("quinoa")
@@ -203,16 +204,7 @@ class NotificationWorker(QThread):
         """Parse a time value from the database, normalized to local naive datetime."""
         if raw_time is None:
             return None
-        if isinstance(raw_time, datetime):
-            dt = raw_time
-        else:
-            try:
-                # SQLite stores as ISO format string
-                dt = datetime.fromisoformat(raw_time)
-            except (ValueError, TypeError):
-                return None
-        # Normalize tz-aware datetimes to local naive so comparisons with
-        # datetime.now() (naive) never raise TypeError.
-        if dt.tzinfo is not None:
-            dt = dt.astimezone().replace(tzinfo=None)
-        return dt
+        try:
+            return to_local_naive(raw_time)
+        except (ValueError, TypeError):
+            return None

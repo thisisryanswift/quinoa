@@ -2,7 +2,6 @@
 
 import contextlib
 import logging
-from datetime import datetime
 from typing import TYPE_CHECKING
 
 from PyQt6.QtCore import Qt, QThread, QTimer
@@ -25,6 +24,7 @@ from quinoa.constants import (
     WINDOW_MIN_HEIGHT,
     WINDOW_MIN_WIDTH,
 )
+from quinoa.datetime_utils import to_local_naive
 from quinoa.search.file_search import FileSearchManager
 from quinoa.search.sync_worker import SyncWorker
 from quinoa.storage.database import Database
@@ -588,11 +588,8 @@ class MainWindow(QMainWindow):
             date_raw = r.get("started_at", "")
             date_display = date_raw
             if date_raw:
-                try:
-                    dt = datetime.fromisoformat(date_raw) if isinstance(date_raw, str) else date_raw
-                    date_display = dt.strftime("%b %d, %Y")
-                except (ValueError, TypeError):
-                    pass
+                with contextlib.suppress(ValueError, TypeError):
+                    date_display = to_local_naive(date_raw).strftime("%b %d, %Y")
 
             ctx.recent_meetings.append(f"{title} ({date_display})")
 

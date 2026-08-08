@@ -55,6 +55,7 @@ from quinoa.constants import (
     ViewType,
     get_now,
 )
+from quinoa.datetime_utils import to_local_naive, utc_now
 from quinoa.storage.database import Database
 from quinoa.ui.audio_player import AudioPlayer
 from quinoa.ui.calendar_panel import get_meeting_platform
@@ -159,7 +160,7 @@ class MeetingSelectionDialog(QDialog):
                 for meeting in self.todays_meetings:
                     title = meeting.get("title", "Untitled")
                     try:
-                        start_dt = datetime.fromisoformat(meeting["start_time"])
+                        start_dt = to_local_naive(meeting["start_time"])
                         time_str = start_dt.strftime("%I:%M %p").lstrip("0")
                     except (ValueError, TypeError, KeyError):
                         time_str = ""
@@ -497,7 +498,7 @@ class MiddlePanel(QWidget):
 
         # Date chip
         try:
-            dt = datetime.fromisoformat(rec["started_at"])
+            dt = to_local_naive(rec["started_at"])
             date_str = dt.strftime("%b %d, %Y • %I:%M %p")
         except (ValueError, TypeError):
             date_str = str(rec["started_at"])
@@ -1140,8 +1141,8 @@ class MiddlePanel(QWidget):
         start_dt: datetime | None = None
         end_dt: datetime | None = None
         try:
-            start_dt = datetime.fromisoformat(event["start_time"])
-            end_dt = datetime.fromisoformat(event["end_time"])
+            start_dt = to_local_naive(event["start_time"])
+            end_dt = to_local_naive(event["end_time"])
             date_str = start_dt.strftime("%b %d, %Y \u2022 %I:%M %p")
         except (ValueError, TypeError):
             date_str = str(event["start_time"])
@@ -1177,11 +1178,9 @@ class MiddlePanel(QWidget):
         start_dt_local: datetime | None = None
         end_dt_local: datetime | None = None
         if start_dt:
-            start_dt_local = (
-                start_dt.astimezone().replace(tzinfo=None) if start_dt.tzinfo else start_dt
-            )
+            start_dt_local = to_local_naive(start_dt)
         if end_dt:
-            end_dt_local = end_dt.astimezone().replace(tzinfo=None) if end_dt.tzinfo else end_dt
+            end_dt_local = to_local_naive(end_dt)
 
         is_future = start_dt_local > now if start_dt_local else False
         is_in_progress = (
@@ -1666,7 +1665,7 @@ class MiddlePanel(QWidget):
             self.db.add_recording(
                 self.current_rec_id,
                 rec_title,
-                datetime.now(),
+                utc_now(),
                 os.path.join(self.current_session_dir, "microphone.wav"),
                 os.path.join(self.current_session_dir, "system.wav"),
                 mic_device_id=mic_id,
@@ -1742,14 +1741,14 @@ class MiddlePanel(QWidget):
                 rec_id,
                 "completed",
                 duration=duration,
-                ended_at=datetime.now(),
+                ended_at=utc_now(),
             )
         else:
             self.db.update_recording_status(
                 rec_id,
                 "failed",
                 duration=duration,
-                ended_at=datetime.now(),
+                ended_at=utc_now(),
             )
 
         # Reset recording state safely

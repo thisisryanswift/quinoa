@@ -36,6 +36,7 @@ from quinoa.constants import (
     LAYOUT_MARGIN_SMALL,
     get_now,
 )
+from quinoa.datetime_utils import to_local_date_key, to_local_naive
 from quinoa.storage.database import Database
 from quinoa.ui.styles import TOGGLE_TAB
 
@@ -256,10 +257,8 @@ class CalendarPanel(QWidget):
         self.meeting_list.addItem(item)
 
     def _to_local(self, dt: datetime) -> datetime:
-        """Convert datetime to local time, handling both aware and naive datetimes."""
-        if dt.tzinfo is not None:
-            return dt.astimezone().replace(tzinfo=None)
-        return dt
+        """Convert datetime to local naive time for UI comparisons."""
+        return to_local_naive(dt)
 
     def _format_time(self, dt: datetime) -> str:
         """Format time as 9:30 AM (converting to local time if needed)."""
@@ -284,8 +283,8 @@ class CalendarPanel(QWidget):
     ) -> QListWidgetItem:
         """Create a list item for a calendar event."""
         title = event["title"]
-        start_time_raw = datetime.fromisoformat(event["start_time"])
-        end_time_raw = datetime.fromisoformat(event["end_time"])
+        start_time_raw = to_local_naive(event["start_time"])
+        end_time_raw = to_local_naive(event["end_time"])
         meet_link = event.get("meet_link")
         recording_id = event.get("rec_id")
         rec_duration = event.get("rec_duration")
@@ -337,7 +336,7 @@ class CalendarPanel(QWidget):
         duration = rec["duration_seconds"]
 
         try:
-            dt = datetime.fromisoformat(ts)
+            dt = to_local_naive(ts)
             time_str = self._format_time(dt)
         except (ValueError, TypeError):
             time_str = str(ts)
@@ -441,10 +440,7 @@ class CalendarPanel(QWidget):
 
                 dt = None
                 try:
-                    dt = datetime.fromisoformat(str(timestamp))
-                    # Normalize to naive (local) datetime for consistent comparisons
-                    if dt.tzinfo is not None:
-                        dt = dt.replace(tzinfo=None)
+                    dt = to_local_naive(str(timestamp))
                     time_str = dt.strftime("%b %d %I:%M %p").lstrip("0")
                 except (ValueError, TypeError):
                     time_str = ""
@@ -636,7 +632,7 @@ class CalendarPanel(QWidget):
         snippet = res.get("text_snippet")
 
         try:
-            dt = datetime.fromisoformat(res["started_at"])
+            dt = to_local_naive(res["started_at"])
             date_str = dt.strftime("%b %d, %Y")
         except (ValueError, TypeError):
             date_str = ""
@@ -918,7 +914,7 @@ class CalendarPanel(QWidget):
         past = []
 
         for event in events:
-            start_time = self._to_local(datetime.fromisoformat(event["start_time"]))
+            start_time = to_local_naive(event["start_time"])
             if start_time > now:
                 upcoming.append(event)
             else:
@@ -966,7 +962,7 @@ class CalendarPanel(QWidget):
         for rec in recordings:
             ts = rec["started_at"]
             try:
-                dt = datetime.fromisoformat(ts)
+                dt = to_local_naive(ts)
             except (ValueError, TypeError):
                 dt = None
 
@@ -1031,14 +1027,14 @@ class CalendarPanel(QWidget):
         # Group by date
         events_by_date: dict[str, list[dict]] = {}
         for event in all_events:
-            date_key = event["start_time"][:10]  # YYYY-MM-DD
+            date_key = to_local_date_key(event["start_time"])
             if date_key not in events_by_date:
                 events_by_date[date_key] = []
             events_by_date[date_key].append(event)
 
         recordings_by_date: dict[str, list[dict]] = {}
         for rec in all_recordings:
-            date_key = rec["started_at"][:10]  # YYYY-MM-DD
+            date_key = to_local_date_key(rec["started_at"])
             if date_key not in recordings_by_date:
                 recordings_by_date[date_key] = []
             recordings_by_date[date_key].append(rec)

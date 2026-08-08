@@ -9,8 +9,29 @@ from pathlib import Path
 from typing import Any
 
 from quinoa.constants import get_now
+from quinoa.datetime_utils import (
+    POLICY_NYC,
+    POLICY_UTC,
+    serialize_timestamp,
+    utc_now,
+)
 
 logger = logging.getLogger("quinoa")
+
+# Columns migrated from legacy implicit timestamps to canonical UTC ISO text.
+# Format: (table_name, timestamp_column, primary_key_column, naive_policy)
+_MIGRATION_COLUMNS: list[tuple[str, str, str, str]] = [
+    ("recordings", "started_at", "id", POLICY_NYC),
+    ("recordings", "ended_at", "id", POLICY_NYC),
+    ("meeting_folders", "created_at", "id", POLICY_NYC),
+    ("speaker_profiles", "last_used_at", "name", POLICY_NYC),
+    ("transcripts", "created_at", "recording_id", POLICY_NYC),
+    ("file_search_sync", "last_synced_at", "recording_id", POLICY_NYC),
+    ("calendar_events", "start_time", "event_id", POLICY_NYC),
+    ("calendar_events", "end_time", "event_id", POLICY_NYC),
+    ("calendar_events", "synced_at", "event_id", POLICY_NYC),
+    ("chat_history", "timestamp", "id", POLICY_UTC),
+]
 
 
 class Database:
@@ -18,7 +39,14 @@ class Database:
 
     Uses a single persistent connection per thread for better performance.
     The connection is created lazily on first use.
+
+    Schema initialization and the timestamp migration run once on a dedicated
+    short-lived connection under a class-level lock.  For ``:memory:`` databases
+    the init connection is kept as the thread-local connection for the creating
+    thread so the shared in-memory schema is not lost.
     """
+
+    _init_lock = threading.Lock()
 
     def __init__(self, db_path: str | Path | None = None) -> None:
         if not db_path:
@@ -27,14 +55,25 @@ class Database:
             db_path = os.path.join(data_dir, "quinoa.db")
 
         self.db_path = str(db_path)
+        self._is_in_memory = self.db_path == ":memory:"
+        if self._is_in_memory:
+            # A per-instance shared-cache URI lets this object's thread-local
+            # connections share one in-memory database without leaking between instances.
+            self._connect_uri = f"file:quinoa-{id(self)}?mode=memory&cache=shared"
+            self._use_uri = True
+        else:
+            self._connect_uri = self.db_path
+            self._use_uri = False
+
         self._local = threading.local()
-        self._init_db()
+        self._init_database()
 
     def _get_connection(self) -> sqlite3.Connection:
         """Get or create a connection for the current thread."""
         if not hasattr(self._local, "conn") or self._local.conn is None:
             self._local.conn = sqlite3.connect(
-                self.db_path,
+                self._connect_uri,
+                uri=self._use_uri,
                 check_same_thread=False,
                 timeout=30.0,
             )
@@ -58,207 +97,329 @@ class Database:
             self._local.conn.close()
             self._local.conn = None
 
-    def _init_db(self) -> None:
-        with self._conn() as conn:
-            # Create table with full schema
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS recordings (
-                    id TEXT PRIMARY KEY,
-                    title TEXT,
-                    started_at TIMESTAMP,
-                    ended_at TIMESTAMP,
-                    duration_seconds REAL,
-                    mic_path TEXT,
-                    sys_path TEXT,
-                    stereo_path TEXT,
-                    status TEXT,
-                    mic_device_id TEXT,
-                    mic_device_name TEXT,
-                    directory_path TEXT
-                )
-            """)
+    def _init_database(self) -> None:
+        """Create schema and migrate timestamps on one dedicated connection."""
+        with self._init_lock:
+            conn = sqlite3.connect(
+                self._connect_uri,
+                uri=self._use_uri,
+                timeout=30.0,
+            )
+            conn.row_factory = sqlite3.Row
+            try:
+                self._create_schema(conn)
+                # Schema setup may have started an implicit transaction for FTS
+                # backfill; commit it before the migration begins its own.
+                if conn.in_transaction:
+                    conn.commit()
+                self._migrate_timestamps(conn)
+            except Exception:
+                conn.rollback()
+                raise
+            finally:
+                if not self._is_in_memory:
+                    conn.close()
+                else:
+                    # Keep the init connection alive for the current thread so the
+                    # shared in-memory database persists until queries begin.
+                    self._local.conn = conn
 
-            # Check for missing columns (migration for existing DBs)
-            cursor = conn.execute("PRAGMA table_info(recordings)")
-            columns = [row[1] for row in cursor.fetchall()]
+    def _create_schema(self, conn: sqlite3.Connection) -> None:
+        """Create tables, indexes, triggers, and apply minor schema migrations."""
+        # Create table with full schema
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS recordings (
+                id TEXT PRIMARY KEY,
+                title TEXT,
+                started_at TIMESTAMP,
+                ended_at TIMESTAMP,
+                duration_seconds REAL,
+                mic_path TEXT,
+                sys_path TEXT,
+                stereo_path TEXT,
+                status TEXT,
+                mic_device_id TEXT,
+                mic_device_name TEXT,
+                directory_path TEXT
+            )
+        """)
 
-            if "ended_at" not in columns:
-                conn.execute("ALTER TABLE recordings ADD COLUMN ended_at TIMESTAMP")
-            if "mic_device_id" not in columns:
-                conn.execute("ALTER TABLE recordings ADD COLUMN mic_device_id TEXT")
-            if "mic_device_name" not in columns:
-                conn.execute("ALTER TABLE recordings ADD COLUMN mic_device_name TEXT")
-            if "directory_path" not in columns:
-                conn.execute("ALTER TABLE recordings ADD COLUMN directory_path TEXT")
-            if "notes" not in columns:
-                conn.execute("ALTER TABLE recordings ADD COLUMN notes TEXT DEFAULT ''")
-            if "enhanced_notes" not in columns:
-                conn.execute("ALTER TABLE recordings ADD COLUMN enhanced_notes TEXT")
-            if "folder_id" not in columns:
+        # Check for missing columns (migration for existing DBs)
+        cursor = conn.execute("PRAGMA table_info(recordings)")
+        columns = [row[1] for row in cursor.fetchall()]
+
+        if "ended_at" not in columns:
+            conn.execute("ALTER TABLE recordings ADD COLUMN ended_at TIMESTAMP")
+        if "mic_device_id" not in columns:
+            conn.execute("ALTER TABLE recordings ADD COLUMN mic_device_id TEXT")
+        if "mic_device_name" not in columns:
+            conn.execute("ALTER TABLE recordings ADD COLUMN mic_device_name TEXT")
+        if "directory_path" not in columns:
+            conn.execute("ALTER TABLE recordings ADD COLUMN directory_path TEXT")
+        if "notes" not in columns:
+            conn.execute("ALTER TABLE recordings ADD COLUMN notes TEXT DEFAULT ''")
+        if "enhanced_notes" not in columns:
+            conn.execute("ALTER TABLE recordings ADD COLUMN enhanced_notes TEXT")
+        if "folder_id" not in columns:
+            conn.execute(
+                "ALTER TABLE recordings ADD COLUMN folder_id TEXT REFERENCES meeting_folders(id)"
+            )
+
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS meeting_folders (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                parent_id TEXT,
+                recurring_event_id TEXT,
+                created_at TIMESTAMP,
+                sort_order INTEGER DEFAULT 0,
+                FOREIGN KEY(parent_id) REFERENCES meeting_folders(id)
+            )
+        """)
+
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS speaker_profiles (
+                name TEXT PRIMARY KEY,
+                usage_count INTEGER DEFAULT 1,
+                last_used_at TIMESTAMP
+            )
+        """)
+
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS transcripts (
+                recording_id TEXT PRIMARY KEY,
+                text TEXT,
+                summary TEXT,
+                utterances TEXT,
+                speaker_names TEXT,
+                created_at TIMESTAMP,
+                FOREIGN KEY(recording_id) REFERENCES recordings(id)
+            )
+        """)
+
+        # Migration for existing transcripts table
+        cursor = conn.execute("PRAGMA table_info(transcripts)")
+        transcript_columns = [row[1] for row in cursor.fetchall()]
+        if "utterances" not in transcript_columns:
+            conn.execute("ALTER TABLE transcripts ADD COLUMN utterances TEXT")
+        if "speaker_names" not in transcript_columns:
+            conn.execute("ALTER TABLE transcripts ADD COLUMN speaker_names TEXT")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS action_items (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                recording_id TEXT NOT NULL,
+                text TEXT NOT NULL,
+                assignee TEXT,
+                status TEXT DEFAULT 'open',
+                FOREIGN KEY(recording_id) REFERENCES recordings(id)
+            )
+        """)
+
+        # File Search sync tracking
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS file_search_sync (
+                recording_id TEXT PRIMARY KEY,
+                file_search_file_name TEXT,
+                last_synced_at TIMESTAMP,
+                content_hash TEXT,
+                sync_status TEXT DEFAULT 'pending',
+                error_message TEXT,
+                FOREIGN KEY(recording_id) REFERENCES recordings(id)
+            )
+        """)
+
+        # FTS5 Search Table
+        conn.execute("""
+            CREATE VIRTUAL TABLE IF NOT EXISTS transcripts_fts USING fts5(
+                recording_id UNINDEXED,
+                text,
+                summary
+            )
+        """)
+
+        # Triggers to keep FTS index updated
+        conn.execute("""
+            CREATE TRIGGER IF NOT EXISTS transcripts_ai AFTER INSERT ON transcripts BEGIN
+              INSERT INTO transcripts_fts(recording_id, text, summary)
+              VALUES (new.recording_id, new.text, new.summary);
+            END;
+        """)
+        conn.execute("""
+            CREATE TRIGGER IF NOT EXISTS transcripts_ad AFTER DELETE ON transcripts BEGIN
+              DELETE FROM transcripts_fts WHERE recording_id = old.recording_id;
+            END;
+        """)
+        conn.execute("""
+            CREATE TRIGGER IF NOT EXISTS transcripts_au AFTER UPDATE ON transcripts BEGIN
+              UPDATE transcripts_fts SET text = new.text, summary = new.summary
+              WHERE recording_id = new.recording_id;
+            END;
+        """)
+
+        # Populate FTS if empty but transcripts exist (migration)
+        cursor = conn.execute("SELECT count(*) FROM transcripts_fts")
+        if cursor.fetchone()[0] == 0:
+            conn.execute(
+                "INSERT INTO transcripts_fts(recording_id, text, summary) SELECT recording_id, text, summary FROM transcripts"
+            )
+
+        # Chat history for AI assistant
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS chat_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                role TEXT NOT NULL,
+                content TEXT NOT NULL,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                citations TEXT
+            )
+        """)
+
+        # Calendar events for meetings-first integration
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS calendar_events (
+                event_id TEXT PRIMARY KEY,
+                calendar_id TEXT DEFAULT 'primary',
+                title TEXT NOT NULL,
+                start_time TIMESTAMP NOT NULL,
+                end_time TIMESTAMP NOT NULL,
+                meet_link TEXT,
+                attendees TEXT,
+                organizer_email TEXT,
+                etag TEXT,
+                synced_at TIMESTAMP,
+                recording_id TEXT,
+                hidden INTEGER DEFAULT 0,
+                notes TEXT DEFAULT '',
+                FOREIGN KEY(recording_id) REFERENCES recordings(id)
+            )
+        """)
+
+        # Check for missing hidden/notes columns (migration)
+        cursor = conn.execute("PRAGMA table_info(calendar_events)")
+        columns = [row[1] for row in cursor.fetchall()]
+        if "hidden" not in columns:
+            conn.execute("ALTER TABLE calendar_events ADD COLUMN hidden INTEGER DEFAULT 0")
+        if "notes" not in columns:
+            conn.execute("ALTER TABLE calendar_events ADD COLUMN notes TEXT DEFAULT ''")
+        if "folder_id" not in columns:
+            conn.execute(
+                "ALTER TABLE calendar_events ADD COLUMN folder_id TEXT REFERENCES meeting_folders(id)"
+            )
+        if "recurring_event_id" not in columns:
+            conn.execute("ALTER TABLE calendar_events ADD COLUMN recurring_event_id TEXT")
+
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_calendar_events_start
+            ON calendar_events(start_time)
+        """)
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_calendar_events_recording
+            ON calendar_events(recording_id)
+        """)
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_calendar_events_recurring
+            ON calendar_events(recurring_event_id)
+        """)
+
+    def _migrate_timestamps(self, conn: sqlite3.Connection) -> None:
+        """Migrate legacy timestamp rows to canonical UTC ISO text once per database.
+
+        Uses PRAGMA user_version = 1 as the durable migration marker.  The
+        migration is strict, transactional, and backed by a non-overwriting SQLite
+        backup for populated file-backed databases.
+        """
+        user_version = conn.execute("PRAGMA user_version").fetchone()[0]
+        if user_version >= 1:
+            return
+
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            # Recheck version inside the write lock in case another process
+            # completed migration while we were waiting for the lock.
+            current_version = conn.execute("PRAGMA user_version").fetchone()[0]
+            if current_version >= 1:
+                conn.rollback()
+                return
+
+            rows_to_migrate: list[tuple[str, str, str, Any, Any, str]] = []
+            for table, column, key_col, policy in _MIGRATION_COLUMNS:
+                try:
+                    cursor = conn.execute(
+                        f"SELECT {key_col}, {column} FROM {table} WHERE {column} IS NOT NULL"
+                    )
+                except sqlite3.OperationalError as exc:
+                    raise ValueError(
+                        f"{table}.{column}: cannot inventory timestamp column"
+                    ) from exc
+                for row in cursor.fetchall():
+                    key, raw = row[0], row[1]
+                    rows_to_migrate.append((table, column, key_col, key, raw, policy))
+
+            # Determine whether this is a file-backed database.
+            file_list = conn.execute("PRAGMA database_list").fetchall()
+            main_file = next((row[2] for row in file_list if row[1] == "main"), "")
+            is_file_backed = bool(main_file)
+
+            if is_file_backed and rows_to_migrate:
+                backup_path = f"{main_file}.pre-utc-v1.bak"
+                if os.path.exists(backup_path):
+                    conn.rollback()
+                    raise ValueError(
+                        f"timestamp migration blocked: backup {backup_path!r} already exists"
+                    )
+                self._backup_database(backup_path)
+
+            for table, column, key_col, key, raw, policy in rows_to_migrate:
+                context = f"{table}.{column}@{key}"
+                canonical = serialize_timestamp(raw, policy=policy, context=context)
                 conn.execute(
-                    "ALTER TABLE recordings ADD COLUMN folder_id TEXT REFERENCES meeting_folders(id)"
+                    f"UPDATE {table} SET {column} = ? WHERE {key_col} = ?",
+                    (canonical, key),
                 )
 
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS meeting_folders (
-                    id TEXT PRIMARY KEY,
-                    name TEXT NOT NULL,
-                    parent_id TEXT,
-                    recurring_event_id TEXT,
-                    created_at TIMESTAMP,
-                    sort_order INTEGER DEFAULT 0,
-                    FOREIGN KEY(parent_id) REFERENCES meeting_folders(id)
-                )
-            """)
+            conn.execute("PRAGMA user_version = 1")
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
 
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS speaker_profiles (
-                    name TEXT PRIMARY KEY,
-                    usage_count INTEGER DEFAULT 1,
-                    last_used_at TIMESTAMP
-                )
-            """)
+    def _backup_database(self, backup_path: str) -> None:
+        """Create a non-overwriting SQLite backup of the current database."""
+        temp_path = f"{backup_path}.tmp"
+        if os.path.exists(temp_path):
+            raise ValueError(f"timestamp migration blocked: temporary backup {temp_path!r} exists")
 
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS transcripts (
-                    recording_id TEXT PRIMARY KEY,
-                    text TEXT,
-                    summary TEXT,
-                    utterances TEXT,
-                    speaker_names TEXT,
-                    created_at TIMESTAMP,
-                    FOREIGN KEY(recording_id) REFERENCES recordings(id)
-                )
-            """)
-
-            # Migration for existing transcripts table
-            cursor = conn.execute("PRAGMA table_info(transcripts)")
-            transcript_columns = [row[1] for row in cursor.fetchall()]
-            if "utterances" not in transcript_columns:
-                conn.execute("ALTER TABLE transcripts ADD COLUMN utterances TEXT")
-            if "speaker_names" not in transcript_columns:
-                conn.execute("ALTER TABLE transcripts ADD COLUMN speaker_names TEXT")
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS action_items (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    recording_id TEXT NOT NULL,
-                    text TEXT NOT NULL,
-                    assignee TEXT,
-                    status TEXT DEFAULT 'open',
-                    FOREIGN KEY(recording_id) REFERENCES recordings(id)
-                )
-            """)
-
-            # File Search sync tracking
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS file_search_sync (
-                    recording_id TEXT PRIMARY KEY,
-                    file_search_file_name TEXT,
-                    last_synced_at TIMESTAMP,
-                    content_hash TEXT,
-                    sync_status TEXT DEFAULT 'pending',
-                    error_message TEXT,
-                    FOREIGN KEY(recording_id) REFERENCES recordings(id)
-                )
-            """)
-
-            # FTS5 Search Table
-            conn.execute("""
-                CREATE VIRTUAL TABLE IF NOT EXISTS transcripts_fts USING fts5(
-                    recording_id UNINDEXED,
-                    text,
-                    summary
-                )
-            """)
-
-            # Triggers to keep FTS index updated
-            conn.execute("""
-                CREATE TRIGGER IF NOT EXISTS transcripts_ai AFTER INSERT ON transcripts BEGIN
-                  INSERT INTO transcripts_fts(recording_id, text, summary)
-                  VALUES (new.recording_id, new.text, new.summary);
-                END;
-            """)
-            conn.execute("""
-                CREATE TRIGGER IF NOT EXISTS transcripts_ad AFTER DELETE ON transcripts BEGIN
-                  DELETE FROM transcripts_fts WHERE recording_id = old.recording_id;
-                END;
-            """)
-            conn.execute("""
-                CREATE TRIGGER IF NOT EXISTS transcripts_au AFTER UPDATE ON transcripts BEGIN
-                  UPDATE transcripts_fts SET text = new.text, summary = new.summary
-                  WHERE recording_id = new.recording_id;
-                END;
-            """)
-
-            # Populate FTS if empty but transcripts exist (migration)
-            cursor = conn.execute("SELECT count(*) FROM transcripts_fts")
-            if cursor.fetchone()[0] == 0:
-                conn.execute(
-                    "INSERT INTO transcripts_fts(recording_id, text, summary) SELECT recording_id, text, summary FROM transcripts"
-                )
-
-            # Chat history for AI assistant
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS chat_history (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    session_id TEXT NOT NULL,
-                    role TEXT NOT NULL,
-                    content TEXT NOT NULL,
-                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    citations TEXT
-                )
-            """)
-
-            # Calendar events for meetings-first integration
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS calendar_events (
-                    event_id TEXT PRIMARY KEY,
-                    calendar_id TEXT DEFAULT 'primary',
-                    title TEXT NOT NULL,
-                    start_time TIMESTAMP NOT NULL,
-                    end_time TIMESTAMP NOT NULL,
-                    meet_link TEXT,
-                    attendees TEXT,
-                    organizer_email TEXT,
-                    etag TEXT,
-                    synced_at TIMESTAMP,
-                    recording_id TEXT,
-                    hidden INTEGER DEFAULT 0,
-                    notes TEXT DEFAULT '',
-                    FOREIGN KEY(recording_id) REFERENCES recordings(id)
-                )
-            """)
-
-            # Check for missing hidden/notes columns (migration)
-            cursor = conn.execute("PRAGMA table_info(calendar_events)")
-            columns = [row[1] for row in cursor.fetchall()]
-            if "hidden" not in columns:
-                conn.execute("ALTER TABLE calendar_events ADD COLUMN hidden INTEGER DEFAULT 0")
-            if "notes" not in columns:
-                conn.execute("ALTER TABLE calendar_events ADD COLUMN notes TEXT DEFAULT ''")
-            if "folder_id" not in columns:
-                conn.execute(
-                    "ALTER TABLE calendar_events ADD COLUMN folder_id TEXT REFERENCES meeting_folders(id)"
-                )
-            if "recurring_event_id" not in columns:
-                conn.execute("ALTER TABLE calendar_events ADD COLUMN recurring_event_id TEXT")
-
-            conn.execute("""
-                CREATE INDEX IF NOT EXISTS idx_calendar_events_start
-                ON calendar_events(start_time)
-            """)
-            conn.execute("""
-                CREATE INDEX IF NOT EXISTS idx_calendar_events_recording
-                ON calendar_events(recording_id)
-            """)
-            conn.execute("""
-                CREATE INDEX IF NOT EXISTS idx_calendar_events_recurring
-                ON calendar_events(recurring_event_id)
-            """)
+        source: sqlite3.Connection | None = None
+        dest: sqlite3.Connection | None = None
+        try:
+            source = sqlite3.connect(
+                self._connect_uri,
+                uri=self._use_uri,
+                timeout=30.0,
+            )
+            dest = sqlite3.connect(temp_path, timeout=30.0)
+            source.backup(dest)
+            quick_check = dest.execute("PRAGMA quick_check").fetchone()
+            if quick_check is None or quick_check[0] != "ok":
+                raise ValueError("timestamp migration backup failed SQLite quick_check")
+            dest.close()
+            dest = None
+            source.close()
+            source = None
+            os.link(temp_path, backup_path)
+            Path(temp_path).unlink()
+        except Exception:
+            if dest is not None:
+                dest.close()
+            if source is not None:
+                source.close()
+            Path(temp_path).unlink(missing_ok=True)
+            raise
 
     def get_all_past_calendar_events(self) -> list[dict[str, Any]]:
         """Get all past calendar events (for history view)."""
-        now = get_now()
+        now_str = serialize_timestamp(get_now())
         with self._conn() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute(
@@ -275,7 +436,7 @@ class Database:
                   AND (ce.hidden IS NULL OR ce.hidden = 0)
                 ORDER BY ce.start_time DESC
                 """,
-                (now,),
+                (now_str,),
             )
             return [dict(row) for row in cursor.fetchall()]
 
@@ -283,7 +444,7 @@ class Database:
         self,
         rec_id: str,
         title: str,
-        started_at: datetime,
+        started_at: datetime | str,
         mic_path: str | Path,
         sys_path: str | Path,
         mic_device_id: str | None = None,
@@ -296,7 +457,11 @@ class Database:
                 (
                     rec_id,
                     title,
-                    started_at,
+                    serialize_timestamp(
+                        started_at,
+                        policy=POLICY_NYC,
+                        context=f"recordings.started_at@{rec_id}",
+                    ),
                     str(mic_path),
                     str(sys_path),
                     "recording",
@@ -312,7 +477,7 @@ class Database:
         status: str,
         duration: float | None = None,
         stereo_path: str | Path | None = None,
-        ended_at: datetime | None = None,
+        ended_at: datetime | str | None = None,
     ) -> None:
         with self._conn() as conn:
             updates = ["status = ?"]
@@ -324,7 +489,13 @@ class Database:
 
             if ended_at is not None:
                 updates.append("ended_at = ?")
-                params.append(ended_at)
+                params.append(
+                    serialize_timestamp(
+                        ended_at,
+                        policy=POLICY_NYC,
+                        context=f"recordings.ended_at@{rec_id}",
+                    )
+                )
 
             if stereo_path is not None:
                 updates.append("stereo_path = ?")
@@ -373,7 +544,17 @@ class Database:
                      summary=excluded.summary,
                      utterances=excluded.utterances,
                      created_at=excluded.created_at""",
-                (rec_id, text, summary, utterances, datetime.now()),
+                (
+                    rec_id,
+                    text,
+                    summary,
+                    utterances,
+                    serialize_timestamp(
+                        utc_now(),
+                        policy=POLICY_UTC,
+                        context=f"transcripts.created_at@{rec_id}",
+                    ),
+                ),
             )
 
     def get_recordings(self) -> list[dict[str, Any]]:
@@ -382,15 +563,19 @@ class Database:
             cursor = conn.execute("SELECT * FROM recordings ORDER BY started_at DESC")
             return [dict(row) for row in cursor.fetchall()]
 
-    def get_recordings_in_range(self, start: datetime, end: datetime) -> list[dict[str, Any]]:
+    def get_recordings_in_range(
+        self, start: datetime | str, end: datetime | str
+    ) -> list[dict[str, Any]]:
         """Get recordings within a date range (inclusive)."""
+        start_str = serialize_timestamp(start)
+        end_str = serialize_timestamp(end)
         with self._conn() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute(
                 """SELECT * FROM recordings
                    WHERE started_at >= ? AND started_at <= ?
                    ORDER BY started_at DESC""",
-                (start.isoformat(), end.isoformat()),
+                (start_str, end_str),
             )
             return [dict(row) for row in cursor.fetchall()]
 
@@ -495,7 +680,14 @@ class Database:
                     usage_count = usage_count + 1,
                     last_used_at = excluded.last_used_at
                 """,
-                (name, get_now()),
+                (
+                    name,
+                    serialize_timestamp(
+                        utc_now(),
+                        policy=POLICY_NYC,
+                        context=f"speaker_profiles.last_used_at@{name}",
+                    ),
+                ),
             )
 
     def get_frequent_speakers(self, min_usage: int = 3) -> list[str]:
@@ -631,6 +823,14 @@ class Database:
         error: str | None = None,
     ) -> None:
         """Update sync status for a recording."""
+        last_synced: str | None = None
+        if status == "synced":
+            last_synced = serialize_timestamp(
+                utc_now(),
+                policy=POLICY_UTC,
+                context=f"file_search_sync.last_synced_at@{rec_id}",
+            )
+
         with self._conn() as conn:
             conn.execute(
                 """
@@ -651,7 +851,7 @@ class Database:
                     file_name,
                     content_hash,
                     error,
-                    datetime.now() if status == "synced" else None,
+                    last_synced,
                 ),
             )
 
@@ -711,10 +911,20 @@ class Database:
         with self._conn() as conn:
             conn.execute(
                 """
-                INSERT INTO chat_history (session_id, role, content, citations)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO chat_history (session_id, role, content, timestamp, citations)
+                VALUES (?, ?, ?, ?, ?)
                 """,
-                (session_id, role, content, citations),
+                (
+                    session_id,
+                    role,
+                    content,
+                    serialize_timestamp(
+                        utc_now(),
+                        policy=POLICY_UTC,
+                        context="chat_history.timestamp",
+                    ),
+                    citations,
+                ),
             )
 
     def get_chat_history(self, session_id: str, limit: int = 50) -> list[dict[str, Any]]:
@@ -744,6 +954,7 @@ class Database:
         total_changes = 0
         with self._conn() as conn:
             for event in events:
+                event_id = event["event_id"]
                 conn.execute(
                     """
                     INSERT INTO calendar_events
@@ -764,16 +975,28 @@ class Database:
                         hidden = COALESCE(calendar_events.hidden, 0)
                     """,
                     (
-                        event["event_id"],
+                        event_id,
                         event.get("calendar_id", "primary"),
                         event["title"],
-                        event["start_time"],
-                        event["end_time"],
+                        serialize_timestamp(
+                            event["start_time"],
+                            policy=POLICY_NYC,
+                            context=f"calendar_events.start_time@{event_id}",
+                        ),
+                        serialize_timestamp(
+                            event["end_time"],
+                            policy=POLICY_NYC,
+                            context=f"calendar_events.end_time@{event_id}",
+                        ),
                         event.get("meet_link"),
                         event.get("attendees"),  # JSON string
                         event.get("organizer_email"),
                         event.get("etag"),
-                        datetime.now(),
+                        serialize_timestamp(
+                            utc_now(),
+                            policy=POLICY_UTC,
+                            context=f"calendar_events.synced_at@{event_id}",
+                        ),
                         event.get("recurring_event_id"),
                     ),
                 )
@@ -797,8 +1020,12 @@ class Database:
             row = cursor.fetchone()
             return row[0] if row and row[0] else ""
 
-    def get_calendar_events(self, start_date: datetime, end_date: datetime) -> list[dict[str, Any]]:
+    def get_calendar_events(
+        self, start_date: datetime | str, end_date: datetime | str
+    ) -> list[dict[str, Any]]:
         """Get calendar events in a date range with recording info."""
+        start_str = serialize_timestamp(start_date)
+        end_str = serialize_timestamp(end_date)
         with self._conn() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute(
@@ -815,7 +1042,7 @@ class Database:
                   AND (ce.hidden IS NULL OR ce.hidden = 0)
                 ORDER BY ce.start_time ASC
                 """,
-                (start_date, end_date),
+                (start_str, end_str),
             )
             return [dict(row) for row in cursor.fetchall()]
 
@@ -840,6 +1067,10 @@ class Database:
         window_start = now - timedelta(minutes=buffer_minutes)
         window_end = now + timedelta(minutes=buffer_minutes)
 
+        now_str = serialize_timestamp(now)
+        window_start_str = serialize_timestamp(window_start)
+        window_end_str = serialize_timestamp(window_end)
+
         with self._conn() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.execute(
@@ -851,7 +1082,7 @@ class Database:
                 ORDER BY start_time ASC
                 LIMIT 1
                 """,
-                (now, now, window_start, window_end),
+                (now_str, now_str, window_start_str, window_end_str),
             )
             row = cursor.fetchone()
             return dict(row) if row else None
@@ -913,7 +1144,11 @@ class Database:
                     name,
                     parent_id,
                     recurring_event_id,
-                    datetime.now(),
+                    serialize_timestamp(
+                        utc_now(),
+                        policy=POLICY_NYC,
+                        context=f"meeting_folders.created_at@{folder_id}",
+                    ),
                     sort_order,
                 ),
             )

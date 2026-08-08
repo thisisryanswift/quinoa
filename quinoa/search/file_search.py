@@ -15,6 +15,7 @@ from google.genai import errors, types
 
 from quinoa.config import config
 from quinoa.constants import GEMINI_GENERATION_TIMEOUT_MS, GEMINI_MODEL_SEARCH
+from quinoa.datetime_utils import to_local_naive
 
 if TYPE_CHECKING:
     from quinoa.ui.right_panel import MeetingContext
@@ -362,13 +363,7 @@ class FileSearchManager:
             line = f"The user is currently viewing: {safe_title}"
             if meeting_context.date:
                 try:
-                    from datetime import datetime
-
-                    dt = (
-                        datetime.fromisoformat(meeting_context.date)
-                        if isinstance(meeting_context.date, str)
-                        else meeting_context.date
-                    )
+                    dt = to_local_naive(meeting_context.date)
                     line += f" ({dt.strftime('%B %d, %Y')})"
                 except (ValueError, TypeError):
                     safe_date = _sanitize_context_text(str(meeting_context.date))

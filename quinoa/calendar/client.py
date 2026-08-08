@@ -9,6 +9,7 @@ from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 
 from quinoa.constants import get_now
+from quinoa.datetime_utils import parse_timestamp
 
 logger = logging.getLogger("quinoa")
 
@@ -84,9 +85,8 @@ class CalendarClient:
         video_only: bool = True,
     ) -> list[dict]:
         """Fetch events from a single calendar."""
-        local_tz = datetime.now().astimezone().tzinfo
-        start_aware = start_time.replace(tzinfo=local_tz)
-        end_aware = end_time.replace(tzinfo=local_tz)
+        start_aware = parse_timestamp(start_time)
+        end_aware = parse_timestamp(end_time)
 
         result = (
             self.service.events()

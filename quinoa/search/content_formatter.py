@@ -1,8 +1,9 @@
 """Format meeting data for File Search upload."""
 
 import hashlib
-from datetime import datetime
 from typing import Any
+
+from quinoa.datetime_utils import to_local_naive
 
 
 def format_meeting_document(
@@ -27,7 +28,7 @@ def format_meeting_document(
     started_at = recording.get("started_at")
     if started_at:
         try:
-            dt = datetime.fromisoformat(started_at) if isinstance(started_at, str) else started_at
+            dt = to_local_naive(started_at)
             date_str = dt.strftime("%B %d, %Y at %I:%M %p")
         except (ValueError, TypeError):
             date_str = str(started_at)
